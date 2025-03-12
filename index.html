@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Turing Test com Sabotador</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="login-screen">
+        <input type="text" id="playerName" placeholder="Seu nome">
+        <button onclick="joinGame()">Entrar no Jogo</button>
+    </div>
+
+    <div id="game-container" class="hidden">
+        <div id="players-list"></div>
+        
+        <div id="chat-container">
+            <div id="chat-messages"></div>
+            <button id="mic-button" onclick="toggleMic()">🎤</button>
+        </div>
+
+        <div id="game-phase">
+            <!-- Área dinâmica para cada fase do jogo -->
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="game.js"></script>
+</body>
+</html> 
