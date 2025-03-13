@@ -134,7 +134,8 @@ function findAvailableGame() {
             round: 0,
             maxRounds: 3,
             votes: [],
-            aiPlayer: null // Será definido quando o jogo começar
+            aiPlayer: null, // Será definido quando o jogo começar
+            playerColors: [] // Array para armazenar as cores dos jogadores
         };
         games.set(gameId, availableGame);
     }
@@ -166,13 +167,16 @@ function updateGameState(game) {
             name: p.name, 
             id: p.id,
             isHost: p.id === game.hostId,
-            isSabotador: p.isSabotador || false,
-            isAnswerAuthor: p.isAnswerAuthor || false
+            score: p.score || 0,
+            isAnswerAuthor: p.isAnswerAuthor || false,
+            isQuestionAuthor: p.id === game.currentQuestionAuthorId,
+            color: p.color
         })),
         phase: game.phase,
         canStart: canStart,
         round: game.round,
-        maxRounds: game.maxRounds
+        maxRounds: game.maxRounds,
+        aiScore: game.aiScore || 0
     };
     
     // Adicionar dados específicos da fase atual
@@ -213,23 +217,22 @@ function startGame(game) {
     game.status = 'playing';
     game.phase = 'question';
     game.round = 1;
+    game.aiScore = 0;
     
-    // Escolher aleatoriamente um sabotador entre os jogadores
-    const randomPlayerIndex = Math.floor(Math.random() * game.players.length);
-    game.players[randomPlayerIndex].isSabotador = true;
-    
-    // Criar um jogador IA
-    game.aiPlayer = {
-        id: 'ai_' + Date.now(),
-        name: 'Jogador ' + (game.players.length + 1),
-        isAI: true
-    };
-    
-    // Notificar cada jogador sobre seu papel
+    // Inicializar pontuação para todos os jogadores
     game.players.forEach(player => {
-        io.to(player.id).emit('role-assigned', {
-            isSabotador: player.isSabotador || false,
-            role: player.isSabotador ? 'sabotador' : 'player'
+        player.score = 0;
+    });
+    
+    // Escolher aleatoriamente um jogador para fazer a primeira pergunta
+    const randomPlayerIndex = Math.floor(Math.random() * game.players.length);
+    game.currentQuestionAuthorId = game.players[randomPlayerIndex].id;
+    game.questionAuthorIndex = randomPlayerIndex;
+    
+    // Notificar cada jogador sobre o início do jogo
+    game.players.forEach(player => {
+        io.to(player.id).emit('game-started', {
+            isQuestionAuthor: player.id === game.currentQuestionAuthorId
         });
     });
     
@@ -238,7 +241,7 @@ function startGame(game) {
 }
 
 function startVotingPhase(game) {
-    console.log(`Iniciando fase de votação para o jogo ${game.id}. Rodada: ${game.round}/${game.maxRounds}`);
+    console.log(`Iniciando fase de votação para o jogo ${game.id}. Rodada: ${game.round}`);
     console.log("Estado atual das respostas:", JSON.stringify(game.currentAnswers));
     
     // Garantir que temos respostas para votar
@@ -247,37 +250,22 @@ function startVotingPhase(game) {
         return;
     }
     
-    // Verificar se temos pelo menos uma resposta da IA e uma resposta humana
+    // Verificar se temos a resposta da IA
     const aiAnswer = game.currentAnswers.find(a => a.source === 'ai');
-    const humanAnswer = game.currentAnswers.find(a => a.source === 'human');
     
     console.log("Resposta da IA encontrada:", aiAnswer ? "Sim" : "Não");
-    console.log("Resposta humana encontrada:", humanAnswer ? "Sim" : "Não");
     
-    if (!aiAnswer || !humanAnswer) {
-        console.log("AVISO: Faltando resposta da IA ou humana. Tentando corrigir...");
+    if (!aiAnswer) {
+        console.log("AVISO: Faltando resposta da IA. Tentando corrigir...");
         
         // Se não temos resposta da IA, gerar uma
-        if (!aiAnswer) {
-            const fallbackResponse = generateFallbackResponse(game.currentQuestion);
-            game.currentAnswers.push({
-                question: game.currentQuestion,
-                answer: fallbackResponse,
-                source: 'ai'
-            });
-            console.log("Resposta da IA gerada como fallback");
-        }
-        
-        // Se não temos resposta humana, gerar uma
-        if (!humanAnswer) {
-            const fallbackHumanResponse = "Não consegui pensar em uma resposta a tempo...";
-            game.currentAnswers.push({
-                question: game.currentQuestion,
-                answer: fallbackHumanResponse,
-                source: 'human'
-            });
-            console.log("Resposta humana gerada como fallback");
-        }
+        const fallbackResponse = generateFallbackResponse(game.currentQuestion);
+        game.currentAnswers.push({
+            question: game.currentQuestion,
+            answer: fallbackResponse,
+            source: 'ai'
+        });
+        console.log("Resposta da IA gerada como fallback");
     }
     
     // Embaralhar as respostas para não ser óbvio qual é da IA
@@ -287,7 +275,8 @@ function startVotingPhase(game) {
     const anonymousAnswers = game.currentAnswers.map((answer, index) => ({
         question: answer.question,
         answer: answer.answer,
-        index: index // Mantemos apenas o índice para referência na votação
+        index: index, // Mantemos apenas o índice para referência na votação
+        authorId: answer.authorId // Mantemos o ID do autor para pontuação
     }));
     
     console.log(`Enviando ${anonymousAnswers.length} respostas para votação:`, JSON.stringify(anonymousAnswers));
@@ -296,13 +285,12 @@ function startVotingPhase(game) {
     game.phase = 'vote';
     game.votes = [];
     
-    // Enviar as respostas para os jogadores votarem
+    // Enviar as respostas para todos os jogadores
     io.to(game.id).emit('show-answers', {
         question: game.currentQuestion,
         answers: anonymousAnswers
     });
     
-    // Atualizar o estado do jogo para todos os jogadores
     updateGameState(game);
 }
 
@@ -335,55 +323,92 @@ function processVotes(game) {
     console.log("Resultados da votação:", results);
     console.log("Votos para pular:", skipVotes);
     
+    // Encontrar o índice da resposta da IA
+    const aiAnswerIndex = game.currentAnswers.findIndex(a => a.source === 'ai');
+    
+    // Verificar se alguém acertou a resposta da IA
+    let aiCorrectlyIdentified = false;
+    
     // Adicionar informação sobre a origem das respostas (IA ou humano)
     const answersWithSources = game.currentAnswers.map((answer, index) => {
         // Encontrar o nome do autor da resposta humana, se disponível
-        let authorName = "Desconhecido";
+        let authorName = "IA";
+        let authorId = null;
+        
         if (answer.source === 'human' && answer.authorId) {
             const author = game.players.find(p => p.id === answer.authorId);
             if (author) {
                 authorName = author.name;
+                authorId = author.id;
             }
+        }
+        
+        // Contar votos para esta resposta
+        const result = results.find(r => r.answerIndex === index);
+        const votesReceived = result ? result.votes : 0;
+        
+        // Se esta é uma resposta humana, dar pontos ao autor por cada voto recebido
+        if (answer.source === 'human' && authorId) {
+            const author = game.players.find(p => p.id === authorId);
+            if (author) {
+                author.score = (author.score || 0) + votesReceived;
+                console.log(`${author.name} ganhou ${votesReceived} pontos por votos em sua resposta`);
+            }
+        }
+        
+        // Verificar se esta é a resposta da IA e se alguém votou nela
+        if (answer.source === 'ai' && votesReceived > 0) {
+            aiCorrectlyIdentified = true;
+            
+            // Dar 3 pontos para cada jogador que votou corretamente na IA
+            game.votes.forEach(vote => {
+                if (vote.answerIndex === index) {
+                    const voter = game.players.find(p => p.id === vote.playerId);
+                    if (voter) {
+                        voter.score = (voter.score || 0) + 3;
+                        console.log(`${voter.name} ganhou 3 pontos por identificar corretamente a IA`);
+                    }
+                }
+            });
         }
         
         return {
             question: answer.question,
             answer: answer.answer,
             source: answer.source,
-            authorId: answer.authorId,
+            authorId: authorId,
             authorName: authorName,
-            index: index
+            index: index,
+            votesReceived: votesReceived
         };
     });
     
-    // Verificar se houve acusação do sabotador
-    let sabotadorResult = null;
-    if (game.sabotadorAccusation) {
-        // Encontrar o nome do sabotador
-        const sabotador = game.players.find(p => p.id === game.sabotadorAccusation.sabotadorId);
-        
-        // Encontrar o nome do jogador acusado
-        const accusedPlayer = game.players.find(p => p.id === game.sabotadorAccusation.accusedPlayerId);
-        
-        if (sabotador && accusedPlayer) {
-            sabotadorResult = {
-                sabotadorName: sabotador.name,
-                accusedPlayerName: accusedPlayer.name,
-                isCorrect: game.sabotadorAccusation.isCorrect
+    // Se ninguém identificou a IA, ela ganha 3 pontos
+    if (!aiCorrectlyIdentified) {
+        game.aiScore = (game.aiScore || 0) + 3;
+        console.log(`A IA ganhou 3 pontos porque ninguém a identificou`);
+    }
+    
+    // Verificar condições de vitória
+    let gameWinner = null;
+    
+    // Verificar se a IA ganhou (12 pontos)
+    if (game.aiScore >= 12) {
+        gameWinner = {
+            type: 'ai',
+            name: 'IA',
+            score: game.aiScore
+        };
+    } else {
+        // Verificar se algum jogador ganhou (10 pontos)
+        const winningPlayer = game.players.find(p => (p.score || 0) >= 10);
+        if (winningPlayer) {
+            gameWinner = {
+                type: 'player',
+                name: winningPlayer.name,
+                id: winningPlayer.id,
+                score: winningPlayer.score
             };
-            
-            // Se o sabotador acertou, marcar que ele ganhou o jogo
-            if (game.sabotadorAccusation.isCorrect) {
-                game.sabotadorWon = true;
-                
-                // Se o sabotador acertou, terminar o jogo imediatamente
-                setTimeout(() => {
-                    endGame(game);
-                }, 5000);
-                
-                // Não continuar com o processamento normal
-                return;
-            }
         }
     }
     
@@ -396,10 +421,25 @@ function processVotes(game) {
         question: game.currentQuestion,
         skipVotes: skipVotes,
         skipPercentage: Math.round((skipVotes / totalVotes) * 100),
-        sabotadorResult: sabotadorResult
+        aiAnswerIndex: aiAnswerIndex,
+        aiCorrectlyIdentified: aiCorrectlyIdentified,
+        aiScore: game.aiScore,
+        playerScores: game.players.map(p => ({
+            id: p.id,
+            name: p.name,
+            score: p.score || 0
+        }))
     });
     
     updateGameState(game);
+    
+    // Se temos um vencedor, terminar o jogo
+    if (gameWinner) {
+        setTimeout(() => {
+            endGame(game, gameWinner);
+        }, 5000);
+        return;
+    }
     
     // Preparar para a próxima rodada após 10 segundos
     setTimeout(() => {
@@ -408,39 +448,29 @@ function processVotes(game) {
             player.isAnswerAuthor = false;
         });
         
-        // Limpar a acusação do sabotador
-        game.sabotadorAccusation = null;
+        // Avançar para o próximo jogador para fazer a pergunta
+        game.questionAuthorIndex = (game.questionAuthorIndex + 1) % game.players.length;
+        game.currentQuestionAuthorId = game.players[game.questionAuthorIndex].id;
         
-        if (game.round < game.maxRounds) {
-            game.round++;
-            game.phase = 'question';
-            game.currentAnswers = [];
-            updateGameState(game);
-        } else {
-            endGame(game);
-        }
+        game.round++;
+        game.phase = 'question';
+        game.currentAnswers = [];
+        updateGameState(game);
     }, 10000);
 }
 
-function endGame(game) {
+function endGame(game, winner) {
     console.log(`Finalizando o jogo ${game.id}`);
-    
-    // Calcular o resultado final
-    const sabotador = game.players.find(p => p.isSabotador);
-    const sabotadorName = sabotador ? sabotador.name : "Desconhecido";
-    
-    // Verificar se o sabotador acertou alguma acusação
-    const sabotadorWon = game.sabotadorWon || false;
     
     // Preparar o resultado final
     const finalResult = {
-        sabotadorName: sabotadorName,
-        sabotadorWon: sabotadorWon,
+        winner: winner,
         players: game.players.map(p => ({
             name: p.name,
             id: p.id,
-            isSabotador: p.isSabotador || false
-        }))
+            score: p.score || 0
+        })),
+        aiScore: game.aiScore || 0
     };
     
     game.phase = 'gameOver';
@@ -471,16 +501,24 @@ io.on('connection', (socket) => {
             game.hostId = socket.id;
         }
         
+        // Gerar uma cor única para o jogador
+        let playerColor;
+        do {
+            playerColor = generatePlayerColor();
+            // Garantir que a cor não está sendo usada por outro jogador
+        } while (game.players.some(p => p.color === playerColor));
+        
         game.players.push({
             id: socket.id,
             name: playerName,
             role: assignRole(),
-            isSabotador: false // Será definido quando o jogo começar
+            color: playerColor,
+            score: 0
         });
         
         socket.join(game.id);
         updateGameState(game);
-        console.log(`${playerName} entrou no jogo ${game.id}`);
+        console.log(`${playerName} entrou no jogo ${game.id} com a cor ${playerColor}`);
     });
 
     socket.on('start-game', () => {
@@ -503,6 +541,13 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // Verificar se este jogador é o autor da pergunta atual
+        if (game.currentQuestionAuthorId !== socket.id) {
+            console.log(`Erro: Jogador ${socket.id} não é o autor da pergunta atual`);
+            socket.emit('game-error', { message: 'Você não é o jogador designado para fazer a pergunta nesta rodada.' });
+            return;
+        }
+        
         console.log(`Pergunta recebida de ${socket.id}: "${data.question}"`);
         
         // Limpar respostas anteriores
@@ -519,7 +564,7 @@ io.on('connection', (socket) => {
             game.currentAnswers.push({
                 question: data.question,
                 answer: aiResponse,
-                source: 'ai' // Marcamos como IA para uso interno, não será mostrado aos jogadores
+                source: 'ai' // Marcamos como IA para uso interno
             });
         } catch (error) {
             console.error("Erro ao gerar resposta da IA:", error);
@@ -531,75 +576,57 @@ io.on('connection', (socket) => {
             });
         }
         
-        // Sortear um jogador para responder (excluindo quem enviou a pergunta e o sabotador)
-        const availablePlayers = game.players.filter(p => {
-            // Excluir quem enviou a pergunta
-            if (p.id === socket.id) return false;
+        // Solicitar respostas de todos os jogadores (incluindo o autor da pergunta)
+        game.players.forEach(player => {
+            console.log(`Solicitando resposta do jogador ${player.name} (${player.id})`);
             
-            // Excluir o sabotador
-            if (p.isSabotador) return false;
-            
-            return true;
-        });
-        
-        if (availablePlayers.length > 0) {
-            const randomIndex = Math.floor(Math.random() * availablePlayers.length);
-            const selectedPlayer = availablePlayers[randomIndex];
-            
-            console.log(`Jogador sorteado para responder: ${selectedPlayer.name} (${selectedPlayer.id})`);
-            
-            // Enviar solicitação para o jogador sorteado responder
-            console.log(`Enviando solicitação de resposta para ${selectedPlayer.name} (${selectedPlayer.id})`);
-            
-            // Primeiro, enviar um evento para garantir que o jogador sorteado esteja pronto
-            io.to(selectedPlayer.id).emit('prepare-for-answer', {
-                message: "Você foi sorteado para responder. Preparando interface..."
+            // Primeiro, enviar um evento para garantir que o jogador esteja pronto
+            io.to(player.id).emit('prepare-for-answer', {
+                message: "É sua vez de responder. Preparando interface..."
             });
             
             // Depois de um pequeno atraso, enviar a solicitação de resposta
             setTimeout(() => {
-                io.to(selectedPlayer.id).emit('answer-request', {
+                io.to(player.id).emit('answer-request', {
                     question: data.question,
-                    timeLimit: 30, // 30 segundos para responder
-                    selectedPlayerId: selectedPlayer.id // Incluir o ID do jogador selecionado para verificação
+                    timeLimit: 30 // 30 segundos para responder
                 });
             }, 500);
+        });
+        
+        // Definir um timeout para caso algum jogador não responda
+        game.answerTimeout = setTimeout(() => {
+            // Verificar quais jogadores não responderam
+            const respondedPlayerIds = game.currentAnswers
+                .filter(a => a.source === 'human')
+                .map(a => a.authorId);
             
-            // Notificar todos os outros jogadores que estamos aguardando uma resposta
-            game.players.forEach(player => {
-                if (player.id !== selectedPlayer.id) {
-                    io.to(player.id).emit('waiting-for-answer', {
-                        message: `Aguardando resposta de um jogador...`,
-                        timeLimit: 30
-                    });
-                }
+            const nonRespondingPlayers = game.players.filter(p => 
+                !respondedPlayerIds.includes(p.id)
+            );
+            
+            // Gerar respostas automáticas para jogadores que não responderam
+            nonRespondingPlayers.forEach(player => {
+                console.log(`Jogador ${player.name} (${player.id}) não respondeu a tempo. Gerando resposta automática.`);
+                
+                const autoResponse = "Não consegui pensar em uma resposta a tempo...";
+                
+                game.currentAnswers.push({
+                    question: data.question,
+                    answer: autoResponse,
+                    source: 'human',
+                    authorId: player.id
+                });
             });
             
-            // Definir um timeout para caso o jogador não responda
-            game.answerTimeout = setTimeout(() => {
-                // Se o jogador não respondeu, gerar uma resposta automática
-                if (game.currentAnswers.length < 2) {
-                    console.log(`Jogador ${selectedPlayer.id} não respondeu a tempo. Gerando resposta automática.`);
-                    
-                    const autoResponse = "Não consegui pensar em uma resposta a tempo...";
-                    
-                    game.currentAnswers.push({
-                        question: data.question,
-                        answer: autoResponse,
-                        source: 'human' // Marcamos como humano para uso interno
-                    });
-                    
-                    // Iniciar a fase de votação
-                    startVotingPhase(game);
-                }
-            }, 30000); // 30 segundos
-        } else {
-            console.log("Não há jogadores disponíveis para sortear. Usando apenas a resposta da IA.");
-            startVotingPhase(game);
-        }
+            // Iniciar a fase de votação se temos pelo menos uma resposta
+            if (game.currentAnswers.length > 0) {
+                startVotingPhase(game);
+            }
+        }, 30000); // 30 segundos
     });
     
-    // Novo evento para receber a resposta do jogador sorteado
+    // Evento para receber a resposta do jogador
     socket.on('submit-answer', (data) => {
         const game = getGameBySocket(socket);
         if (!game) {
@@ -609,28 +636,40 @@ io.on('connection', (socket) => {
         
         console.log(`Resposta recebida de ${socket.id}: "${data.answer}"`);
         
+        // Verificar se este jogador já enviou uma resposta
+        const existingAnswer = game.currentAnswers.find(a => 
+            a.source === 'human' && a.authorId === socket.id
+        );
+        
+        if (existingAnswer) {
+            console.log(`Jogador ${socket.id} já enviou uma resposta. Ignorando.`);
+            return;
+        }
+        
         // Adicionar resposta do jogador
         game.currentAnswers.push({
             question: data.question,
             answer: data.answer,
-            source: 'human', // Marcamos como humano para uso interno
-            authorId: socket.id // Registrar o ID do autor da resposta
+            source: 'human',
+            authorId: socket.id
         });
         
-        // Marcar o jogador como autor da resposta para que ele pule a votação
-        const player = game.players.find(p => p.id === socket.id);
-        if (player) {
-            player.isAnswerAuthor = true;
-        }
+        // Verificar se todos os jogadores (exceto o autor da pergunta) responderam
+        const expectedResponses = game.players.length - 1; // Todos menos o autor da pergunta
+        const receivedResponses = game.currentAnswers.filter(a => a.source === 'human').length;
         
-        // Cancelar o timeout se existir
-        if (game.answerTimeout) {
-            clearTimeout(game.answerTimeout);
-            game.answerTimeout = null;
-        }
+        console.log(`Recebidas ${receivedResponses} de ${expectedResponses} respostas esperadas`);
         
-        // Iniciar a fase de votação
-        startVotingPhase(game);
+        if (receivedResponses >= expectedResponses) {
+            // Cancelar o timeout se existir
+            if (game.answerTimeout) {
+                clearTimeout(game.answerTimeout);
+                game.answerTimeout = null;
+            }
+            
+            // Iniciar a fase de votação
+            startVotingPhase(game);
+        }
     });
     
     // Evento para receber votos
@@ -640,62 +679,34 @@ io.on('connection', (socket) => {
         
         console.log(`Voto recebido de ${socket.id} para a resposta ${data.answerIndex}`);
         
-        // Registrar voto
-        game.votes.push({
-            playerId: socket.id,
-            answerIndex: data.answerIndex
-        });
+        // Verificar se o jogador está tentando votar na própria resposta
+        const votedAnswer = game.currentAnswers[data.answerIndex];
+        if (votedAnswer && votedAnswer.authorId === socket.id) {
+            console.log(`Jogador ${socket.id} tentou votar na própria resposta. Ignorando.`);
+            socket.emit('game-error', { message: 'Você não pode votar na sua própria resposta.' });
+            return;
+        }
+        
+        // Verificar se o jogador já votou
+        const existingVote = game.votes.find(v => v.playerId === socket.id);
+        if (existingVote) {
+            console.log(`Jogador ${socket.id} já votou. Atualizando voto.`);
+            existingVote.answerIndex = data.answerIndex;
+        } else {
+            // Registrar novo voto
+            game.votes.push({
+                playerId: socket.id,
+                answerIndex: data.answerIndex
+            });
+        }
         
         // Verificar se todos os jogadores votaram
-        const allVoted = game.players.every(player => {
-            return game.votes.some(vote => vote.playerId === player.id);
-        });
+        const expectedVotes = game.players.length;
         
-        // Se todos votaram, processar os votos
-        if (allVoted) {
+        // O autor da pergunta também vota
+        if (game.votes.length >= expectedVotes) {
             processVotes(game);
         }
-    });
-
-    // Evento para receber a acusação do sabotador
-    socket.on('sabotador-accuse', (data) => {
-        const game = getGameBySocket(socket);
-        if (!game || game.phase !== 'vote') return;
-        
-        console.log(`Acusação recebida do sabotador ${socket.id} contra o jogador ${data.accusedPlayerId}`);
-        
-        // Verificar se o jogador que enviou é realmente o sabotador
-        const player = game.players.find(p => p.id === socket.id);
-        if (!player || !player.isSabotador) {
-            console.log("Erro: Jogador não é o sabotador!");
-            return;
-        }
-        
-        // Encontrar o jogador acusado
-        const accusedPlayer = game.players.find(p => p.id === data.accusedPlayerId);
-        if (!accusedPlayer) {
-            console.log("Erro: Jogador acusado não encontrado!");
-            return;
-        }
-        
-        // Verificar se o jogador acusado é o autor da resposta humana
-        const humanAnswer = game.currentAnswers.find(a => a.source === 'human');
-        if (!humanAnswer || !humanAnswer.authorId) {
-            console.log("Erro: Resposta humana não encontrada ou sem autor!");
-            return;
-        }
-        
-        const isCorrectAccusation = humanAnswer.authorId === data.accusedPlayerId;
-        
-        // Registrar a acusação
-        game.sabotadorAccusation = {
-            sabotadorId: socket.id,
-            accusedPlayerId: data.accusedPlayerId,
-            isCorrect: isCorrectAccusation
-        };
-        
-        // Processar os resultados da votação
-        processVotes(game);
     });
     
     socket.on('disconnect', () => {
@@ -739,4 +750,26 @@ function shuffleArray(array) {
         [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
     }
     return newArray;
+}
+
+// Função para gerar uma cor aleatória para o jogador
+function generatePlayerColor() {
+    // Lista de cores predefinidas para garantir boa visibilidade e contraste
+    const colors = [
+        '#e74c3c', // Vermelho
+        '#3498db', // Azul
+        '#2ecc71', // Verde
+        '#f39c12', // Laranja
+        '#9b59b6', // Roxo
+        '#1abc9c', // Turquesa
+        '#d35400', // Laranja escuro
+        '#c0392b', // Vermelho escuro
+        '#8e44ad', // Roxo escuro
+        '#27ae60', // Verde escuro
+        '#2980b9', // Azul escuro
+        '#f1c40f'  // Amarelo
+    ];
+    
+    // Retornar uma cor aleatória da lista
+    return colors[Math.floor(Math.random() * colors.length)];
 } 

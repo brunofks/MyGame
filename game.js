@@ -3,9 +3,10 @@ let localState = {
     players: [],
     phase: 'lobby',
     role: null,
-    isSabotador: false,
     round: 0,
-    maxRounds: 3
+    score: 0,
+    aiScore: 0,
+    isQuestionAuthor: false
 };
 
 // Controles de voz
@@ -80,18 +81,27 @@ function updateGamePhase(phase) {
             break;
             
         case 'question':
-            gamePhase.innerHTML = `<div class="phase-box">
-                <h3>Fase de Perguntas (Rodada ${localState.round}/${localState.maxRounds})</h3>
-                <p>Discuta com os outros jogadores e decida qual pergunta fazer para identificar a IA.</p>
-                <textarea id="question-input" placeholder="Digite sua pergunta aqui..."></textarea>
-                <button onclick="submitQuestion()" class="answer-button">Enviar Pergunta</button>
-            </div>`;
+            // Interface diferente para o autor da pergunta e para os outros jogadores
+            if (localState.isQuestionAuthor) {
+                gamePhase.innerHTML = `<div class="phase-box">
+                    <h3>Fase de Perguntas (Rodada ${localState.round})</h3>
+                    <p>É sua vez de fazer uma pergunta! Escolha uma pergunta que ajude a identificar a resposta da IA.</p>
+                    <textarea id="question-input" placeholder="Digite sua pergunta aqui..."></textarea>
+                    <button onclick="submitQuestion()" class="answer-button">Enviar Pergunta</button>
+                </div>`;
+            } else {
+                gamePhase.innerHTML = `<div class="phase-box">
+                    <h3>Fase de Perguntas (Rodada ${localState.round})</h3>
+                    <p>Aguardando o jogador designado fazer uma pergunta...</p>
+                    <div class="loading-spinner"></div>
+                </div>`;
+            }
             break;
         
         case 'vote':
             // A interface de votação será preenchida quando recebermos os dados de votação
             gamePhase.innerHTML = `<div class="phase-box">
-                <h3>Fase de Votação (Rodada ${localState.round}/${localState.maxRounds})</h3>
+                <h3>Fase de Votação (Rodada ${localState.round})</h3>
                 <p>Aguardando dados para votação...</p>
                 <div class="loading-spinner"></div>
             </div>`;
@@ -104,7 +114,7 @@ function updateGamePhase(phase) {
             
         case 'results':
             gamePhase.innerHTML = `<div class="phase-box">
-                <h3>Resultados (Rodada ${localState.round}/${localState.maxRounds})</h3>
+                <h3>Resultados (Rodada ${localState.round})</h3>
                 <p>Veja como os jogadores votaram:</p>
                 <div id="results-container"></div>
             </div>`;
@@ -119,10 +129,8 @@ function updateGamePhase(phase) {
             break;
     }
     
-    // Atualizar o indicador de papel sempre que a fase mudar
-    if (localState.role) {
-        updateRoleIndicator();
-    }
+    // Atualizar o placar sempre que a fase mudar
+    updateScoreboard();
 }
 
 function updatePlayersList(players) {
@@ -137,21 +145,78 @@ function updatePlayersList(players) {
         let playerClass = 'player-card';
         if (player.isHost) playerClass += ' host';
         if (isCurrentPlayer) playerClass += ' current-player';
+        if (player.isQuestionAuthor) playerClass += ' question-author';
         
         // Criar o texto do jogador com indicadores visuais
-        let playerText = `${index + 1}. ${player.name}`;
+        let playerText = `${player.name}`;
         if (player.isHost) playerText += ' (Anfitrião)';
         if (isCurrentPlayer) playerText += ' (Você)';
+        if (player.isQuestionAuthor) playerText += ' (Pergunta)';
+        
+        // Adicionar pontuação
+        const playerScore = player.score || 0;
+        
+        // Usar a cor do jogador como estilo inline
+        const playerColorStyle = player.color ? `border-left: 4px solid ${player.color}; background-color: ${player.color}20;` : '';
         
         playersList.innerHTML += `
-            <div class="${playerClass}">
-                <div class="player-number">${index + 1}</div>
+            <div class="${playerClass}" style="${playerColorStyle}">
+                <div class="player-number" style="background-color: ${player.color || '#555'};">${index + 1}</div>
                 <div class="player-info">
                     ${isCurrentPlayer ? '👤 ' : ''}${playerText}
+                </div>
+                <div class="player-score">
+                    <span class="score-value">${playerScore}</span> pts
                 </div>
             </div>
         `;
     });
+    
+    // Adicionar pontuação da IA
+    if (localState.aiScore !== undefined) {
+        playersList.innerHTML += `
+            <div class="player-card ai-player">
+                <div class="player-number">IA</div>
+                <div class="player-info">Inteligência Artificial</div>
+                <div class="player-score">
+                    <span class="score-value">${localState.aiScore}</span> pts
+                </div>
+            </div>
+        `;
+    }
+}
+
+// Função para atualizar o placar
+function updateScoreboard() {
+    const scoreboard = document.getElementById('scoreboard');
+    
+    // Criar o placar se não existir
+    if (!scoreboard) {
+        const gameContainer = document.getElementById('game-container');
+        const scoreboardDiv = document.createElement('div');
+        scoreboardDiv.id = 'scoreboard';
+        scoreboardDiv.className = 'scoreboard';
+        gameContainer.prepend(scoreboardDiv);
+    }
+    
+    // Atualizar o conteúdo do placar
+    const scoreboardContent = document.getElementById('scoreboard');
+    if (scoreboardContent) {
+        // Encontrar o jogador atual
+        const currentPlayer = localState.players.find(p => p.id === socket.id);
+        const currentPlayerScore = currentPlayer ? (currentPlayer.score || 0) : 0;
+        
+        scoreboardContent.innerHTML = `
+            <div class="score-item player-score-item">
+                <span class="score-label">Sua pontuação:</span>
+                <span class="score-value">${currentPlayerScore}</span>
+            </div>
+            <div class="score-item ai-score-item">
+                <span class="score-label">Pontuação da IA:</span>
+                <span class="score-value">${localState.aiScore || 0}</span>
+            </div>
+        `;
+    }
 }
 
 socket.on('connect', () => {
@@ -160,41 +225,66 @@ socket.on('connect', () => {
 
 socket.on('game-update', (state) => {
     console.log('Atualização do jogo:', state);
-    localState = {...localState, ...state};
     
+    // Atualizar o estado local
     if (state.players) {
-        updatePlayersList(state.players);
+        localState.players = state.players;
+        
+        // Verificar se o jogador atual é o autor da pergunta
+        const currentPlayer = state.players.find(p => p.id === socket.id);
+        if (currentPlayer) {
+            localState.isQuestionAuthor = currentPlayer.isQuestionAuthor || false;
+            localState.score = currentPlayer.score || 0;
+        }
     }
     
     if (state.phase) {
-        updateGamePhase(state.phase);
-        
-        // Se estamos na fase de votação e temos dados de votação, mostrar as respostas
-        if (state.phase === 'vote' && state.voteData) {
-            console.log("Dados de votação recebidos no game-update:", state.voteData);
-            showAnswersForVoting(state.voteData);
-        }
+        localState.phase = state.phase;
+    }
+    
+    if (state.round) {
+        localState.round = state.round;
+    }
+    
+    if (state.aiScore !== undefined) {
+        localState.aiScore = state.aiScore;
+    }
+    
+    if (state.canStart !== undefined) {
+        localState.canStart = state.canStart;
+    }
+    
+    if (state.voteData) {
+        localState.voteData = state.voteData;
+    }
+    
+    // Atualizar a interface
+    updatePlayersList(state.players);
+    updateGamePhase(state.phase);
+    updateScoreboard();
+    
+    // Se estamos na fase de votação e temos dados de votação, mostrar as respostas
+    if (state.phase === 'vote' && state.voteData) {
+        console.log("Dados de votação recebidos no game-update:", state.voteData);
+        showAnswersForVoting(state.voteData);
     }
 });
 
-socket.on('role-assigned', (roleData) => {
-    console.log('Papel atribuído:', roleData);
-    localState.role = roleData.role;
-    localState.isSabotador = roleData.isSabotador;
+// Substituir o evento role-assigned por game-started
+socket.on('game-started', (data) => {
+    console.log('Jogo iniciado:', data);
+    localState.isQuestionAuthor = data.isQuestionAuthor || false;
     
-    // Atualizar o indicador de papel no topo da tela
-    updateRoleIndicator();
-    
-    // Mostrar notificação do papel
+    // Mostrar notificação de início de jogo
     const notification = document.createElement('div');
     notification.className = 'role-notification';
     
-    if (roleData.isSabotador) {
-        notification.innerHTML = `<h3>Você é o Sabotador!</h3>
-            <p>Sua missão é identificar a identidade real de um jogador ou ajudar a IA a não ser descoberta.</p>`;
+    if (data.isQuestionAuthor) {
+        notification.innerHTML = `<h3>Você foi escolhido!</h3>
+            <p>Você deve fazer a primeira pergunta desta partida.</p>`;
     } else {
-        notification.innerHTML = `<h3>Você é um Jogador!</h3>
-            <p>Sua missão é identificar qual resposta é da IA.</p>`;
+        notification.innerHTML = `<h3>Jogo Iniciado!</h3>
+            <p>Aguarde enquanto o jogador designado faz a pergunta.</p>`;
     }
     
     document.body.appendChild(notification);
@@ -207,36 +297,6 @@ socket.on('role-assigned', (roleData) => {
         }, 1000);
     }, 5000);
 });
-
-// Função para atualizar o indicador de papel
-function updateRoleIndicator() {
-    // Verificar se o indicador já existe
-    let roleIndicator = document.getElementById('role-indicator');
-    
-    // Se não existir, criar um novo
-    if (!roleIndicator) {
-        roleIndicator = document.createElement('div');
-        roleIndicator.id = 'role-indicator';
-        document.getElementById('game-container').prepend(roleIndicator);
-    }
-    
-    // Atualizar o conteúdo do indicador
-    if (localState.role) {
-        const roleName = localState.isSabotador ? 'Sabotador' : 'Jogador';
-        const roleIcon = localState.isSabotador ? '🕵️' : '👥';
-        
-        roleIndicator.className = localState.isSabotador ? 'sabotador-role' : 'player-role';
-        roleIndicator.innerHTML = `
-            <div class="role-icon">${roleIcon}</div>
-            <div class="role-text">
-                <span>Seu papel:</span>
-                <strong>${roleName}</strong>
-            </div>
-        `;
-    } else {
-        roleIndicator.innerHTML = '';
-    }
-}
 
 socket.on('new-message', (msg) => {
     const chat = document.getElementById('chat-messages');
@@ -256,49 +316,16 @@ function showAnswersForVoting(data) {
             return;
         }
         
-        // Verificar se o jogador atual é o sabotador
-        const isSabotador = localState.isSabotador;
+        // Verificar se o jogador atual é o autor de alguma resposta
+        const myAnswerIndex = data.answers.findIndex(a => a.authorId === socket.id);
+        const canVote = myAnswerIndex === -1; // Pode votar se não for autor de nenhuma resposta
         
-        // Verificar se o jogador atual é quem escreveu a resposta
-        const isAnswerAuthor = localState.isAnswerAuthor;
-        
-        // Se o jogador é quem escreveu a resposta, mostrar uma mensagem e pular automaticamente
-        if (isAnswerAuthor) {
-            gamePhase.innerHTML = `<div class="phase-box">
-                <h3>Fase de Votação (Rodada ${localState.round}/${localState.maxRounds})</h3>
-                <p>Você escreveu uma das respostas, então não pode votar nesta rodada.</p>
-                <div class="question-box">"${data.question}"</div>
-                <p>Aguardando os outros jogadores votarem...</p>
-                <div class="loading-spinner"></div>
-            </div>`;
-            
-            // Enviar voto automático para pular
-            socket.emit('vote', { answerIndex: 'skip' });
-            return;
-        }
-        
-        // Interface diferente para sabotador e jogadores normais
-        if (isSabotador) {
-            gamePhase.innerHTML = `<div class="phase-box">
-                <h3>Fase de Votação - Sabotador (Rodada ${localState.round}/${localState.maxRounds})</h3>
-                <p>Como sabotador, você pode tentar identificar qual jogador escreveu a resposta ou pular.</p>
-                <div class="question-box">"${data.question}"</div>
-                <div id="answers-container" class="answers"></div>
-                <div id="sabotador-actions" class="sabotador-actions">
-                    <h4>Ações do Sabotador:</h4>
-                    <p>Selecione o jogador que você acha que escreveu a resposta:</p>
-                    <div id="player-selection" class="player-selection"></div>
-                    <button onclick="voteForAnswer('skip')" class="skip-button">Pular esta rodada</button>
-                </div>
-            </div>`;
-        } else {
-            gamePhase.innerHTML = `<div class="phase-box">
-                <h3>Fase de Votação (Rodada ${localState.round}/${localState.maxRounds})</h3>
-                <p>Vote em qual resposta você acha que foi dada pela IA:</p>
-                <div class="question-box">"${data.question}"</div>
-                <div id="answers-container" class="answers"></div>
-            </div>`;
-        }
+        gamePhase.innerHTML = `<div class="phase-box">
+            <h3>Fase de Votação (Rodada ${localState.round})</h3>
+            <p>Vote em qual resposta você acha que foi dada pela IA:</p>
+            <div class="question-box">"${data.question}"</div>
+            <div id="answers-container" class="answers"></div>
+        </div>`;
         
         const answersContainer = document.getElementById('answers-container');
         if (!answersContainer) {
@@ -313,43 +340,56 @@ function showAnswersForVoting(data) {
             return;
         }
         
-        // Mostrar as respostas sem identificar qual é da IA e qual é do humano
+        // Mostrar as respostas sem identificar qual é da IA
         data.answers.forEach((answer, index) => {
             console.log(`Renderizando resposta ${index + 1}:`, answer);
             
+            // Verificar se esta é a resposta do jogador atual
+            const isMyAnswer = answer.authorId === socket.id;
+            
+            // Encontrar a cor do autor da resposta (se for um jogador)
+            let authorColor = '#555'; // Cor padrão
+            if (answer.authorId) {
+                const author = localState.players.find(p => p.id === answer.authorId);
+                if (author && author.color) {
+                    authorColor = author.color;
+                }
+            }
+            
+            // Estilo para a borda da resposta
+            const answerStyle = isMyAnswer ? 
+                `border-left: 4px solid ${authorColor}; background-color: ${authorColor}20;` : 
+                '';
+            
             answersContainer.innerHTML += `
-                <div class="answer-card">
-                    <div class="answer-number">Resposta ${index + 1}</div>
+                <div class="answer-card ${isMyAnswer ? 'my-answer' : ''}" style="${answerStyle}">
+                    <div class="answer-number" style="${isMyAnswer ? `color: ${authorColor};` : ''}">
+                        Resposta ${index + 1} ${isMyAnswer ? '(Sua resposta)' : ''}
+                    </div>
                     <div class="answer-text">${answer.answer}</div>
-                    ${!isSabotador ? `<button onclick="voteForAnswer(${index})" class="vote-button">Votar</button>` : ''}
+                    ${!isMyAnswer && canVote ? `<button onclick="voteForAnswer(${index})" class="vote-button">Votar como IA</button>` : ''}
+                    ${isMyAnswer ? `<div class="self-answer-note">Você não pode votar na sua própria resposta</div>` : ''}
                 </div>
             `;
         });
         
-        // Adicionar opção para pular (apenas para jogadores normais)
-        if (!isSabotador) {
+        // Adicionar opção para pular
+        if (canVote) {
             answersContainer.innerHTML += `
                 <div class="skip-option">
                     <button onclick="voteForAnswer('skip')">Pular</button>
                 </div>
             `;
-        }
-        
-        // Se for sabotador, adicionar a lista de jogadores para escolher
-        if (isSabotador && localState.players) {
-            const playerSelection = document.getElementById('player-selection');
-            if (playerSelection) {
-                // Filtrar o sabotador da lista
-                const otherPlayers = localState.players.filter(p => p.id !== socket.id);
-                
-                otherPlayers.forEach(player => {
-                    playerSelection.innerHTML += `
-                        <div class="player-option">
-                            <button onclick="accusePlayer('${player.id}')" class="accuse-button">${player.name}</button>
-                        </div>
-                    `;
-                });
-            }
+        } else {
+            // Se o jogador é autor de uma resposta, mostrar mensagem
+            answersContainer.innerHTML += `
+                <div class="author-message">
+                    <p>Você escreveu uma das respostas, então não pode votar nesta rodada.</p>
+                </div>
+            `;
+            
+            // Enviar voto automático para pular
+            socket.emit('vote', { answerIndex: 'skip' });
         }
         
         console.log("Interface de votação renderizada com sucesso");
@@ -365,24 +405,26 @@ socket.on('vote-results', (data) => {
     // Atualizar a interface para mostrar os resultados
     const gamePhase = document.getElementById('game-phase');
     gamePhase.innerHTML = `<div class="phase-box">
-        <h3>Resultados (Rodada ${localState.round}/${localState.maxRounds})</h3>
+        <h3>Resultados (Rodada ${localState.round})</h3>
         <p>Pergunta: "${data.question}"</p>
         <div id="results-container" class="results"></div>
     </div>`;
     
     const resultsContainer = document.getElementById('results-container');
     
-    // Mostrar o resultado da acusação do sabotador, se houver
-    if (data.sabotadorResult) {
-        const sabotadorResultClass = data.sabotadorResult.isCorrect ? 'sabotador-correct' : 'sabotador-wrong';
-        const resultText = data.sabotadorResult.isCorrect 
-            ? `O sabotador ${data.sabotadorResult.sabotadorName} acertou! ${data.sabotadorResult.accusedPlayerName} escreveu a resposta.` 
-            : `O sabotador ${data.sabotadorResult.sabotadorName} errou! ${data.sabotadorResult.accusedPlayerName} não escreveu a resposta.`;
-        
+    // Mostrar se a IA foi identificada corretamente
+    if (data.aiCorrectlyIdentified) {
         resultsContainer.innerHTML += `
-            <div class="sabotador-result ${sabotadorResultClass}">
-                <h4>Acusação do Sabotador</h4>
-                <p>${resultText}</p>
+            <div class="ai-identified">
+                <h4>A IA foi identificada corretamente!</h4>
+                <p>Os jogadores que votaram na resposta da IA ganharam 3 pontos cada.</p>
+            </div>
+        `;
+    } else {
+        resultsContainer.innerHTML += `
+            <div class="ai-not-identified">
+                <h4>Ninguém identificou a IA!</h4>
+                <p>A IA ganhou 3 pontos nesta rodada.</p>
             </div>
         `;
     }
@@ -397,6 +439,15 @@ socket.on('vote-results', (data) => {
         let sourceText = 'Desconhecido';
         let authorInfo = '';
         
+        // Encontrar a cor do autor da resposta (se for um jogador)
+        let authorColor = '#555'; // Cor padrão
+        if (answer.authorId) {
+            const author = localState.players.find(p => p.id === answer.authorId);
+            if (author && author.color) {
+                authorColor = author.color;
+            }
+        }
+        
         if (answer.source === 'ai') {
             sourceClass = 'ai-source';
             sourceText = 'IA';
@@ -404,15 +455,31 @@ socket.on('vote-results', (data) => {
             sourceClass = 'human-source';
             sourceText = 'Humano';
             if (answer.authorName) {
-                authorInfo = `<div class="author-info">Escrita por: ${answer.authorName}</div>`;
+                authorInfo = `<div class="author-info" style="border-left: 2px solid ${authorColor}; color: ${authorColor};">Escrita por: ${answer.authorName}</div>`;
+                
+                // Adicionar informação sobre pontos ganhos
+                if (answer.votesReceived > 0) {
+                    authorInfo += `<div class="points-info">Ganhou ${answer.votesReceived} pontos por votos recebidos</div>`;
+                }
             }
         }
         
+        // Destacar se esta é a resposta da IA
+        const isAiAnswer = index === data.aiAnswerIndex;
+        if (isAiAnswer) {
+            sourceClass += ' highlighted-ai';
+        }
+        
+        // Estilo para a borda da resposta
+        const resultStyle = answer.source === 'human' ? 
+            `border-left: 4px solid ${authorColor}; background-color: ${authorColor}10;` : 
+            '';
+        
         resultsContainer.innerHTML += `
-            <div class="result-card ${sourceClass}">
+            <div class="result-card ${sourceClass}" style="${resultStyle}">
                 <div class="result-header">
                     <div class="result-number">Resposta ${index + 1}</div>
-                    <div class="result-source">${sourceText}</div>
+                    <div class="result-source">${sourceText} ${isAiAnswer ? '⭐' : ''}</div>
                 </div>
                 <div class="result-text">${answer.answer}</div>
                 ${authorInfo}
@@ -440,12 +507,37 @@ socket.on('vote-results', (data) => {
         `;
     }
     
+    // Mostrar placar atual
+    resultsContainer.innerHTML += `
+        <div class="current-scores">
+            <h4>Placar Atual</h4>
+            <div class="scores-list">
+                ${data.playerScores.map(player => `
+                    <div class="score-entry ${player.id === socket.id ? 'my-score' : ''}">
+                        <span class="player-name">${player.name} ${player.id === socket.id ? '(Você)' : ''}</span>
+                        <span class="player-score">${player.score} pts</span>
+                    </div>
+                `).join('')}
+                <div class="score-entry ai-score">
+                    <span class="player-name">IA</span>
+                    <span class="player-score">${data.aiScore} pts</span>
+                </div>
+            </div>
+        </div>
+    `;
+    
     // Adicionar mensagem sobre a próxima rodada
     resultsContainer.innerHTML += `
         <div class="next-round-info">
             <p>Próxima rodada começará em alguns segundos...</p>
         </div>
     `;
+    
+    // Atualizar o placar local
+    localState.aiScore = data.aiScore;
+    
+    // Atualizar o placar
+    updateScoreboard();
 });
 
 socket.on('game-error', (error) => {
@@ -473,25 +565,20 @@ function submitQuestion() {
     // Limpar campo de pergunta
     questionInput.value = '';
     
-    // Atualizar a interface para mostrar que estamos aguardando respostas
+    // Atualizar a interface para mostrar que estamos aguardando respostas dos outros jogadores
     const gamePhase = document.getElementById('game-phase');
     gamePhase.innerHTML = `<div class="phase-box">
         <h3>Aguardando Respostas</h3>
-        <p>Aguardando respostas para a pergunta: "${question}"</p>
+        <p>Você enviou a pergunta: "${question}"</p>
+        <p>Agora você também precisa responder à sua própria pergunta.</p>
         <div class="loading-spinner"></div>
     </div>`;
 }
 
-// Evento para quando o jogador é sorteado para responder
+// Evento para quando o jogador deve responder
 socket.on('answer-request', (data) => {
-    console.log("Você foi sorteado para responder a pergunta:", data.question);
+    console.log("Solicitação para responder à pergunta:", data.question);
     console.log("Dados recebidos:", JSON.stringify(data));
-    
-    // Verificar se este jogador é realmente o jogador sorteado
-    if (data.selectedPlayerId && data.selectedPlayerId !== socket.id) {
-        console.error("Erro: Este jogador não é o jogador sorteado!");
-        return;
-    }
     
     try {
         // Atualizar a interface para permitir que o jogador responda
@@ -503,7 +590,7 @@ socket.on('answer-request', (data) => {
         
         gamePhase.innerHTML = `<div class="phase-box">
             <h3>Responda à Pergunta</h3>
-            <p>Você foi sorteado para responder à pergunta:</p>
+            <p>Responda à pergunta de forma convincente para enganar os outros jogadores:</p>
             <div class="question-box">"${data.question}"</div>
             <div class="answer-timer">
                 Tempo restante: <span id="answer-timer">${data.timeLimit}</span> segundos
@@ -544,9 +631,9 @@ socket.on('answer-request', (data) => {
     }
 });
 
-// Evento para quando estamos aguardando a resposta de um jogador
-socket.on('waiting-for-answer', (data) => {
-    console.log("Aguardando resposta de um jogador...");
+// Evento para quando estamos aguardando respostas dos jogadores
+socket.on('waiting-for-answers', (data) => {
+    console.log("Aguardando respostas dos jogadores...");
     console.log("Dados recebidos:", JSON.stringify(data));
     
     try {
@@ -558,7 +645,7 @@ socket.on('waiting-for-answer', (data) => {
         }
         
         gamePhase.innerHTML = `<div class="phase-box">
-            <h3>Aguardando Resposta</h3>
+            <h3>Aguardando Respostas</h3>
             <p>${data.message}</p>
             <p>Tempo restante: <span id="waiting-timer">${data.timeLimit}</span> segundos</p>
             <div class="loading-spinner"></div>
@@ -581,6 +668,27 @@ socket.on('waiting-for-answer', (data) => {
     } catch (error) {
         console.error("Erro ao processar evento de espera:", error);
     }
+});
+
+// Evento para preparar o jogador para responder
+socket.on('prepare-for-answer', (data) => {
+    console.log("Preparando para responder:", data.message);
+    
+    // Atualizar a interface para mostrar que o jogador deve responder
+    const gamePhase = document.getElementById('game-phase');
+    if (gamePhase) {
+        gamePhase.innerHTML = `<div class="phase-box">
+            <h3>Sua vez de responder</h3>
+            <p>${data.message}</p>
+            <div class="loading-spinner"></div>
+        </div>`;
+    }
+});
+
+// Evento para mostrar as respostas para votação (para compatibilidade)
+socket.on('show-answers', (data) => {
+    console.log("Recebendo respostas via evento show-answers:", data);
+    showAnswersForVoting(data);
 });
 
 // Função para enviar a resposta do jogador
@@ -659,50 +767,6 @@ function voteForAnswer(answerIndex) {
     }
 }
 
-// Evento para preparar o jogador para responder
-socket.on('prepare-for-answer', (data) => {
-    console.log("Preparando para responder:", data.message);
-    
-    // Atualizar a interface para mostrar que o jogador foi sorteado
-    const gamePhase = document.getElementById('game-phase');
-    if (gamePhase) {
-        gamePhase.innerHTML = `<div class="phase-box">
-            <h3>Você foi sorteado!</h3>
-            <p>${data.message}</p>
-            <div class="loading-spinner"></div>
-        </div>`;
-    }
-});
-
-// Evento para mostrar as respostas para votação (para compatibilidade)
-socket.on('show-answers', (data) => {
-    console.log("Recebendo respostas via evento show-answers:", data);
-    showAnswersForVoting(data);
-});
-
-// Função para o sabotador acusar um jogador
-function accusePlayer(playerId) {
-    console.log(`Sabotador acusando o jogador com ID: ${playerId}`);
-    
-    // Enviar a acusação para o servidor
-    socket.emit('sabotador-accuse', { accusedPlayerId: playerId });
-    
-    // Desabilitar todos os botões de acusação após acusar
-    const accuseButtons = document.querySelectorAll('.accuse-button, .skip-button');
-    accuseButtons.forEach(button => {
-        button.disabled = true;
-    });
-    
-    // Adicionar mensagem de confirmação
-    const sabotadorActions = document.getElementById('sabotador-actions');
-    if (sabotadorActions) {
-        const confirmationMsg = document.createElement('div');
-        confirmationMsg.className = 'accusation-confirmation';
-        confirmationMsg.textContent = 'Sua acusação foi registrada! Aguardando o resultado...';
-        sabotadorActions.appendChild(confirmationMsg);
-    }
-}
-
 // Evento para mostrar o resultado final do jogo
 socket.on('game-over', (data) => {
     console.log("Jogo finalizado:", data);
@@ -711,26 +775,35 @@ socket.on('game-over', (data) => {
     const gamePhase = document.getElementById('game-phase');
     
     let resultMessage = '';
-    if (data.sabotadorWon) {
-        resultMessage = `<div class="sabotador-win">
-            <h3>O Sabotador Venceu!</h3>
-            <p>${data.sabotadorName} acertou quem escreveu a resposta humana.</p>
+    if (data.winner.type === 'ai') {
+        resultMessage = `<div class="ai-win">
+            <h3>A IA Venceu!</h3>
+            <p>A IA alcançou ${data.winner.score} pontos e venceu o jogo.</p>
         </div>`;
     } else {
-        resultMessage = `<div class="players-win">
-            <h3>Os Jogadores Venceram!</h3>
-            <p>O sabotador ${data.sabotadorName} não conseguiu identificar quem escreveu a resposta humana.</p>
+        resultMessage = `<div class="player-win">
+            <h3>${data.winner.name} Venceu!</h3>
+            <p>${data.winner.name} alcançou ${data.winner.score} pontos e venceu o jogo.</p>
         </div>`;
     }
     
     gamePhase.innerHTML = `<div class="phase-box">
         <h3>Fim de Jogo</h3>
         ${resultMessage}
-        <div class="players-list final-players">
-            <h4>Jogadores:</h4>
-            <ul>
-                ${data.players.map(p => `<li class="${p.isSabotador ? 'sabotador-player' : 'normal-player'}">${p.name} ${p.isSabotador ? '(Sabotador)' : ''}</li>`).join('')}
-            </ul>
+        <div class="final-scores">
+            <h4>Pontuação Final:</h4>
+            <div class="scores-list">
+                ${data.players.map(p => `
+                    <div class="score-entry ${p.id === socket.id ? 'my-score' : ''} ${p.id === data.winner.id ? 'winner-score' : ''}">
+                        <span class="player-name">${p.name} ${p.id === socket.id ? '(Você)' : ''} ${p.id === data.winner.id ? '👑' : ''}</span>
+                        <span class="player-score">${p.score} pts</span>
+                    </div>
+                `).join('')}
+                <div class="score-entry ai-score ${data.winner.type === 'ai' ? 'winner-score' : ''}">
+                    <span class="player-name">IA ${data.winner.type === 'ai' ? '👑' : ''}</span>
+                    <span class="player-score">${data.aiScore} pts</span>
+                </div>
+            </div>
         </div>
         <button onclick="location.reload()" class="play-again-button">Jogar Novamente</button>
     </div>`;
