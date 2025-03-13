@@ -256,12 +256,49 @@ function showAnswersForVoting(data) {
             return;
         }
         
-        gamePhase.innerHTML = `<div class="phase-box">
-            <h3>Fase de Votação (Rodada ${localState.round}/${localState.maxRounds})</h3>
-            <p>Vote em qual resposta você acha que foi dada pela IA:</p>
-            <div class="question-box">"${data.question}"</div>
-            <div id="answers-container" class="answers"></div>
-        </div>`;
+        // Verificar se o jogador atual é o sabotador
+        const isSabotador = localState.isSabotador;
+        
+        // Verificar se o jogador atual é quem escreveu a resposta
+        const isAnswerAuthor = localState.isAnswerAuthor;
+        
+        // Se o jogador é quem escreveu a resposta, mostrar uma mensagem e pular automaticamente
+        if (isAnswerAuthor) {
+            gamePhase.innerHTML = `<div class="phase-box">
+                <h3>Fase de Votação (Rodada ${localState.round}/${localState.maxRounds})</h3>
+                <p>Você escreveu uma das respostas, então não pode votar nesta rodada.</p>
+                <div class="question-box">"${data.question}"</div>
+                <p>Aguardando os outros jogadores votarem...</p>
+                <div class="loading-spinner"></div>
+            </div>`;
+            
+            // Enviar voto automático para pular
+            socket.emit('vote', { answerIndex: 'skip' });
+            return;
+        }
+        
+        // Interface diferente para sabotador e jogadores normais
+        if (isSabotador) {
+            gamePhase.innerHTML = `<div class="phase-box">
+                <h3>Fase de Votação - Sabotador (Rodada ${localState.round}/${localState.maxRounds})</h3>
+                <p>Como sabotador, você pode tentar identificar qual jogador escreveu a resposta ou pular.</p>
+                <div class="question-box">"${data.question}"</div>
+                <div id="answers-container" class="answers"></div>
+                <div id="sabotador-actions" class="sabotador-actions">
+                    <h4>Ações do Sabotador:</h4>
+                    <p>Selecione o jogador que você acha que escreveu a resposta:</p>
+                    <div id="player-selection" class="player-selection"></div>
+                    <button onclick="voteForAnswer('skip')" class="skip-button">Pular esta rodada</button>
+                </div>
+            </div>`;
+        } else {
+            gamePhase.innerHTML = `<div class="phase-box">
+                <h3>Fase de Votação (Rodada ${localState.round}/${localState.maxRounds})</h3>
+                <p>Vote em qual resposta você acha que foi dada pela IA:</p>
+                <div class="question-box">"${data.question}"</div>
+                <div id="answers-container" class="answers"></div>
+            </div>`;
+        }
         
         const answersContainer = document.getElementById('answers-container');
         if (!answersContainer) {
@@ -284,17 +321,36 @@ function showAnswersForVoting(data) {
                 <div class="answer-card">
                     <div class="answer-number">Resposta ${index + 1}</div>
                     <div class="answer-text">${answer.answer}</div>
-                    <button onclick="voteForAnswer(${index})" class="vote-button">Votar</button>
+                    ${!isSabotador ? `<button onclick="voteForAnswer(${index})" class="vote-button">Votar</button>` : ''}
                 </div>
             `;
         });
         
-        // Adicionar opção para pular
-        answersContainer.innerHTML += `
-            <div class="skip-option">
-                <button onclick="voteForAnswer('skip')">Pular</button>
-            </div>
-        `;
+        // Adicionar opção para pular (apenas para jogadores normais)
+        if (!isSabotador) {
+            answersContainer.innerHTML += `
+                <div class="skip-option">
+                    <button onclick="voteForAnswer('skip')">Pular</button>
+                </div>
+            `;
+        }
+        
+        // Se for sabotador, adicionar a lista de jogadores para escolher
+        if (isSabotador && localState.players) {
+            const playerSelection = document.getElementById('player-selection');
+            if (playerSelection) {
+                // Filtrar o sabotador da lista
+                const otherPlayers = localState.players.filter(p => p.id !== socket.id);
+                
+                otherPlayers.forEach(player => {
+                    playerSelection.innerHTML += `
+                        <div class="player-option">
+                            <button onclick="accusePlayer('${player.id}')" class="accuse-button">${player.name}</button>
+                        </div>
+                    `;
+                });
+            }
+        }
         
         console.log("Interface de votação renderizada com sucesso");
     } catch (error) {
@@ -316,6 +372,21 @@ socket.on('vote-results', (data) => {
     
     const resultsContainer = document.getElementById('results-container');
     
+    // Mostrar o resultado da acusação do sabotador, se houver
+    if (data.sabotadorResult) {
+        const sabotadorResultClass = data.sabotadorResult.isCorrect ? 'sabotador-correct' : 'sabotador-wrong';
+        const resultText = data.sabotadorResult.isCorrect 
+            ? `O sabotador ${data.sabotadorResult.sabotadorName} acertou! ${data.sabotadorResult.accusedPlayerName} escreveu a resposta.` 
+            : `O sabotador ${data.sabotadorResult.sabotadorName} errou! ${data.sabotadorResult.accusedPlayerName} não escreveu a resposta.`;
+        
+        resultsContainer.innerHTML += `
+            <div class="sabotador-result ${sabotadorResultClass}">
+                <h4>Acusação do Sabotador</h4>
+                <p>${resultText}</p>
+            </div>
+        `;
+    }
+    
     // Mostrar as respostas com a informação de origem (IA ou humano)
     data.answers.forEach((answer, index) => {
         // Encontrar os resultados da votação para esta resposta
@@ -324,6 +395,7 @@ socket.on('vote-results', (data) => {
         // Determinar a classe CSS com base na origem
         let sourceClass = 'unknown-source';
         let sourceText = 'Desconhecido';
+        let authorInfo = '';
         
         if (answer.source === 'ai') {
             sourceClass = 'ai-source';
@@ -331,6 +403,9 @@ socket.on('vote-results', (data) => {
         } else if (answer.source === 'human') {
             sourceClass = 'human-source';
             sourceText = 'Humano';
+            if (answer.authorName) {
+                authorInfo = `<div class="author-info">Escrita por: ${answer.authorName}</div>`;
+            }
         }
         
         resultsContainer.innerHTML += `
@@ -340,6 +415,7 @@ socket.on('vote-results', (data) => {
                     <div class="result-source">${sourceText}</div>
                 </div>
                 <div class="result-text">${answer.answer}</div>
+                ${authorInfo}
                 <div class="result-votes">
                     <div class="vote-bar" style="width: ${voteResult.percentage}%"></div>
                     <div class="vote-text">${voteResult.votes} votos (${voteResult.percentage}%)</div>
@@ -602,4 +678,60 @@ socket.on('prepare-for-answer', (data) => {
 socket.on('show-answers', (data) => {
     console.log("Recebendo respostas via evento show-answers:", data);
     showAnswersForVoting(data);
+});
+
+// Função para o sabotador acusar um jogador
+function accusePlayer(playerId) {
+    console.log(`Sabotador acusando o jogador com ID: ${playerId}`);
+    
+    // Enviar a acusação para o servidor
+    socket.emit('sabotador-accuse', { accusedPlayerId: playerId });
+    
+    // Desabilitar todos os botões de acusação após acusar
+    const accuseButtons = document.querySelectorAll('.accuse-button, .skip-button');
+    accuseButtons.forEach(button => {
+        button.disabled = true;
+    });
+    
+    // Adicionar mensagem de confirmação
+    const sabotadorActions = document.getElementById('sabotador-actions');
+    if (sabotadorActions) {
+        const confirmationMsg = document.createElement('div');
+        confirmationMsg.className = 'accusation-confirmation';
+        confirmationMsg.textContent = 'Sua acusação foi registrada! Aguardando o resultado...';
+        sabotadorActions.appendChild(confirmationMsg);
+    }
+}
+
+// Evento para mostrar o resultado final do jogo
+socket.on('game-over', (data) => {
+    console.log("Jogo finalizado:", data);
+    
+    // Atualizar a interface para mostrar o resultado final
+    const gamePhase = document.getElementById('game-phase');
+    
+    let resultMessage = '';
+    if (data.sabotadorWon) {
+        resultMessage = `<div class="sabotador-win">
+            <h3>O Sabotador Venceu!</h3>
+            <p>${data.sabotadorName} acertou quem escreveu a resposta humana.</p>
+        </div>`;
+    } else {
+        resultMessage = `<div class="players-win">
+            <h3>Os Jogadores Venceram!</h3>
+            <p>O sabotador ${data.sabotadorName} não conseguiu identificar quem escreveu a resposta humana.</p>
+        </div>`;
+    }
+    
+    gamePhase.innerHTML = `<div class="phase-box">
+        <h3>Fim de Jogo</h3>
+        ${resultMessage}
+        <div class="players-list final-players">
+            <h4>Jogadores:</h4>
+            <ul>
+                ${data.players.map(p => `<li class="${p.isSabotador ? 'sabotador-player' : 'normal-player'}">${p.name} ${p.isSabotador ? '(Sabotador)' : ''}</li>`).join('')}
+            </ul>
+        </div>
+        <button onclick="location.reload()" class="play-again-button">Jogar Novamente</button>
+    </div>`;
 }); 

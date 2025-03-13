@@ -165,7 +165,9 @@ function updateGameState(game) {
         players: game.players.map(p => ({ 
             name: p.name, 
             id: p.id,
-            isHost: p.id === game.hostId
+            isHost: p.id === game.hostId,
+            isSabotador: p.isSabotador || false,
+            isAnswerAuthor: p.isAnswerAuthor || false
         })),
         phase: game.phase,
         canStart: canStart,
@@ -190,8 +192,17 @@ function updateGameState(game) {
         };
     }
     
-    console.log(`Enviando atualização de estado para o jogo ${game.id}, fase: ${game.phase}`);
-    io.to(game.id).emit('game-update', gameState);
+    // Enviar informações específicas para cada jogador
+    game.players.forEach(player => {
+        // Clonar o estado do jogo para este jogador
+        const playerState = JSON.parse(JSON.stringify(gameState));
+        
+        // Adicionar informações específicas para este jogador
+        playerState.isAnswerAuthor = player.isAnswerAuthor || false;
+        
+        console.log(`Enviando atualização de estado para o jogador ${player.id}, fase: ${game.phase}`);
+        io.to(player.id).emit('game-update', playerState);
+    });
 }
 
 function startGame(game) {
@@ -325,12 +336,56 @@ function processVotes(game) {
     console.log("Votos para pular:", skipVotes);
     
     // Adicionar informação sobre a origem das respostas (IA ou humano)
-    const answersWithSources = game.currentAnswers.map((answer, index) => ({
-        question: answer.question,
-        answer: answer.answer,
-        source: answer.source,
-        index: index
-    }));
+    const answersWithSources = game.currentAnswers.map((answer, index) => {
+        // Encontrar o nome do autor da resposta humana, se disponível
+        let authorName = "Desconhecido";
+        if (answer.source === 'human' && answer.authorId) {
+            const author = game.players.find(p => p.id === answer.authorId);
+            if (author) {
+                authorName = author.name;
+            }
+        }
+        
+        return {
+            question: answer.question,
+            answer: answer.answer,
+            source: answer.source,
+            authorId: answer.authorId,
+            authorName: authorName,
+            index: index
+        };
+    });
+    
+    // Verificar se houve acusação do sabotador
+    let sabotadorResult = null;
+    if (game.sabotadorAccusation) {
+        // Encontrar o nome do sabotador
+        const sabotador = game.players.find(p => p.id === game.sabotadorAccusation.sabotadorId);
+        
+        // Encontrar o nome do jogador acusado
+        const accusedPlayer = game.players.find(p => p.id === game.sabotadorAccusation.accusedPlayerId);
+        
+        if (sabotador && accusedPlayer) {
+            sabotadorResult = {
+                sabotadorName: sabotador.name,
+                accusedPlayerName: accusedPlayer.name,
+                isCorrect: game.sabotadorAccusation.isCorrect
+            };
+            
+            // Se o sabotador acertou, marcar que ele ganhou o jogo
+            if (game.sabotadorAccusation.isCorrect) {
+                game.sabotadorWon = true;
+                
+                // Se o sabotador acertou, terminar o jogo imediatamente
+                setTimeout(() => {
+                    endGame(game);
+                }, 5000);
+                
+                // Não continuar com o processamento normal
+                return;
+            }
+        }
+    }
     
     game.phase = 'results';
     game.voteResults = results;
@@ -340,13 +395,22 @@ function processVotes(game) {
         answers: answersWithSources,
         question: game.currentQuestion,
         skipVotes: skipVotes,
-        skipPercentage: Math.round((skipVotes / totalVotes) * 100)
+        skipPercentage: Math.round((skipVotes / totalVotes) * 100),
+        sabotadorResult: sabotadorResult
     });
     
     updateGameState(game);
     
     // Preparar para a próxima rodada após 10 segundos
     setTimeout(() => {
+        // Limpar o estado de autor da resposta para todos os jogadores
+        game.players.forEach(player => {
+            player.isAnswerAuthor = false;
+        });
+        
+        // Limpar a acusação do sabotador
+        game.sabotadorAccusation = null;
+        
         if (game.round < game.maxRounds) {
             game.round++;
             game.phase = 'question';
@@ -359,8 +423,32 @@ function processVotes(game) {
 }
 
 function endGame(game) {
+    console.log(`Finalizando o jogo ${game.id}`);
+    
+    // Calcular o resultado final
+    const sabotador = game.players.find(p => p.isSabotador);
+    const sabotadorName = sabotador ? sabotador.name : "Desconhecido";
+    
+    // Verificar se o sabotador acertou alguma acusação
+    const sabotadorWon = game.sabotadorWon || false;
+    
+    // Preparar o resultado final
+    const finalResult = {
+        sabotadorName: sabotadorName,
+        sabotadorWon: sabotadorWon,
+        players: game.players.map(p => ({
+            name: p.name,
+            id: p.id,
+            isSabotador: p.isSabotador || false
+        }))
+    };
+    
     game.phase = 'gameOver';
     game.status = 'finished';
+    
+    // Enviar o resultado final para todos os jogadores
+    io.to(game.id).emit('game-over', finalResult);
+    
     updateGameState(game);
     
     // Remover o jogo após algum tempo
@@ -443,8 +531,16 @@ io.on('connection', (socket) => {
             });
         }
         
-        // Sortear um jogador para responder (excluindo quem enviou a pergunta)
-        const availablePlayers = game.players.filter(p => p.id !== socket.id);
+        // Sortear um jogador para responder (excluindo quem enviou a pergunta e o sabotador)
+        const availablePlayers = game.players.filter(p => {
+            // Excluir quem enviou a pergunta
+            if (p.id === socket.id) return false;
+            
+            // Excluir o sabotador
+            if (p.isSabotador) return false;
+            
+            return true;
+        });
         
         if (availablePlayers.length > 0) {
             const randomIndex = Math.floor(Math.random() * availablePlayers.length);
@@ -517,8 +613,15 @@ io.on('connection', (socket) => {
         game.currentAnswers.push({
             question: data.question,
             answer: data.answer,
-            source: 'human' // Marcamos como humano para uso interno
+            source: 'human', // Marcamos como humano para uso interno
+            authorId: socket.id // Registrar o ID do autor da resposta
         });
+        
+        // Marcar o jogador como autor da resposta para que ele pule a votação
+        const player = game.players.find(p => p.id === socket.id);
+        if (player) {
+            player.isAnswerAuthor = true;
+        }
         
         // Cancelar o timeout se existir
         if (game.answerTimeout) {
@@ -552,6 +655,47 @@ io.on('connection', (socket) => {
         if (allVoted) {
             processVotes(game);
         }
+    });
+
+    // Evento para receber a acusação do sabotador
+    socket.on('sabotador-accuse', (data) => {
+        const game = getGameBySocket(socket);
+        if (!game || game.phase !== 'vote') return;
+        
+        console.log(`Acusação recebida do sabotador ${socket.id} contra o jogador ${data.accusedPlayerId}`);
+        
+        // Verificar se o jogador que enviou é realmente o sabotador
+        const player = game.players.find(p => p.id === socket.id);
+        if (!player || !player.isSabotador) {
+            console.log("Erro: Jogador não é o sabotador!");
+            return;
+        }
+        
+        // Encontrar o jogador acusado
+        const accusedPlayer = game.players.find(p => p.id === data.accusedPlayerId);
+        if (!accusedPlayer) {
+            console.log("Erro: Jogador acusado não encontrado!");
+            return;
+        }
+        
+        // Verificar se o jogador acusado é o autor da resposta humana
+        const humanAnswer = game.currentAnswers.find(a => a.source === 'human');
+        if (!humanAnswer || !humanAnswer.authorId) {
+            console.log("Erro: Resposta humana não encontrada ou sem autor!");
+            return;
+        }
+        
+        const isCorrectAccusation = humanAnswer.authorId === data.accusedPlayerId;
+        
+        // Registrar a acusação
+        game.sabotadorAccusation = {
+            sabotadorId: socket.id,
+            accusedPlayerId: data.accusedPlayerId,
+            isCorrect: isCorrectAccusation
+        };
+        
+        // Processar os resultados da votação
+        processVotes(game);
     });
     
     socket.on('disconnect', () => {
