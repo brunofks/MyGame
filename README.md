@@ -42,7 +42,7 @@ O objetivo dos jogadores é descobrir quem é a IA, enquanto o sabotador tenta i
 
 2. Instale as dependências:
    ```
-   npm install express socket.io
+   npm install express socket.io dotenv @google/generative-ai
    ```
 
 3. Inicie o servidor:
@@ -79,4 +79,20 @@ O objetivo dos jogadores é descobrir quem é a IA, enquanto o sabotador tenta i
 
 ## Licença
 
-Este projeto está licenciado sob a licença MIT - veja o arquivo LICENSE para detalhes. 
+Este projeto está licenciado sob a licença MIT - veja o arquivo LICENSE para detalhes.
+
+## Configuração da API do Google Gemini
+
+Este jogo utiliza a API do Google Gemini para gerar respostas de IA. Para configurar:
+
+1. Obtenha uma chave de API no [Google AI Studio](https://makersuite.google.com/)
+2. Crie um arquivo `.env` na raiz do projeto com o seguinte conteúdo:
+   ```
+   GEMINI_API_KEY=sua_chave_api_aqui
+   ```
+3. Instale as dependências adicionais:
+   ```
+   npm install dotenv @google/generative-ai
+   ```
+
+**IMPORTANTE**: Nunca compartilhe sua chave de API ou inclua o arquivo `.env` em repositórios públicos. 

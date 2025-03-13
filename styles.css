@@ -80,6 +80,8 @@ body {
     border-radius: 5px;
     transition: transform 0.3s;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
 }
 
 .player-card.host {
@@ -89,6 +91,40 @@ body {
 
 .player-card:hover {
     transform: scale(1.05);
+}
+
+.player-card.current-player {
+    background: #3f51b5;
+    border: 2px solid #7986cb;
+    font-weight: bold;
+    transform: scale(1.05);
+    box-shadow: 0 0 10px rgba(121, 134, 203, 0.5);
+}
+
+.player-card.current-player:hover {
+    transform: scale(1.1);
+}
+
+.player-number {
+    background: #555;
+    color: white;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-right: 10px;
+    font-weight: bold;
+}
+
+.current-player .player-number {
+    background: #ff9800;
+    color: #000;
+}
+
+.player-info {
+    flex: 1;
 }
 
 #chat-container {
@@ -187,53 +223,173 @@ button:disabled {
 .answers {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 15px;
+    margin-top: 20px;
 }
 
 .answer-card {
-    background: #444;
-    padding: 15px;
+    background-color: #2a2a2a;
     border-radius: 8px;
-    margin: 5px 0;
+    padding: 15px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
     transition: transform 0.2s;
 }
 
 .answer-card:hover {
-    transform: translateX(5px);
+    transform: translateY(-2px);
+}
+
+.answer-number {
+    font-weight: bold;
+    color: #f0f0f0;
+    margin-bottom: 8px;
+}
+
+.answer-text {
+    color: #e0e0e0;
+    margin-bottom: 15px;
+    line-height: 1.5;
+}
+
+.answer-card button {
+    background-color: #4a4a4a;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.answer-card button:hover {
+    background-color: #5a5a5a;
+}
+
+.answer-card button:disabled {
+    background-color: #3a3a3a;
+    cursor: not-allowed;
+}
+
+.skip-option {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.skip-option button {
+    background-color: #3a3a3a;
+    color: #c0c0c0;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.skip-option button:hover {
+    background-color: #4a4a4a;
+}
+
+.vote-confirmation {
+    margin-top: 15px;
+    padding: 10px;
+    background-color: #2a552a;
+    color: #a0ffa0;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.results {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 20px;
 }
 
 .result-card {
-    background: #444;
-    padding: 15px;
+    background-color: #2a2a2a;
     border-radius: 8px;
-    margin: 10px 0;
+    padding: 15px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
 }
 
-.vote-bar {
-    height: 24px;
-    background: #555;
-    border-radius: 12px;
-    margin-top: 10px;
+.result-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.result-number {
+    font-weight: bold;
+    color: #f0f0f0;
+}
+
+.result-source {
+    font-weight: bold;
+    padding: 3px 8px;
+    border-radius: 4px;
+}
+
+.ai-source .result-source {
+    background-color: #553355;
+    color: #ffaaff;
+}
+
+.human-source .result-source {
+    background-color: #335533;
+    color: #aaffaa;
+}
+
+.unknown-source .result-source {
+    background-color: #555533;
+    color: #ffffaa;
+}
+
+.result-text {
+    color: #e0e0e0;
+    margin-bottom: 15px;
+    line-height: 1.5;
+}
+
+.result-votes {
     position: relative;
+    height: 30px;
+    background-color: #3a3a3a;
+    border-radius: 4px;
     overflow: hidden;
 }
 
-.vote-fill {
-    height: 100%;
-    background: linear-gradient(to right, #4CAF50, #8BC34A);
-    border-radius: 12px;
-    transition: width 1s ease-in-out;
-}
-
-.vote-bar span {
+.vote-bar {
     position: absolute;
     top: 0;
     left: 0;
-    right: 0;
-    text-align: center;
-    line-height: 24px;
-    color: white;
-    text-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
+    height: 100%;
+    background-color: #4a6a8a;
+    transition: width 0.5s ease-out;
+}
+
+.vote-text {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #f0f0f0;
+    font-weight: bold;
+    text-shadow: 0 0 3px rgba(0, 0, 0, 0.7);
+}
+
+.question-box {
+    background-color: #333;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    color: #f0f0f0;
+    font-style: italic;
+    border-left: 4px solid #5a5a5a;
 }
 
 .role-info {
@@ -290,4 +446,203 @@ button:disabled {
         font-size: 14px;
         padding: 8px;
     }
+}
+
+.next-round-info {
+    background: #333;
+    padding: 10px 15px;
+    border-radius: 8px;
+    margin-top: 20px;
+    text-align: center;
+    border-left: 4px solid #4CAF50;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.7; }
+    50% { opacity: 1; }
+    100% { opacity: 0.7; }
+}
+
+#role-indicator {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.player-role {
+    background: linear-gradient(to right, #3f51b5, #5c6bc0);
+    border-left: 4px solid #7986cb;
+}
+
+.sabotador-role {
+    background: linear-gradient(to right, #d32f2f, #f44336);
+    border-left: 4px solid #ff8a80;
+}
+
+.role-icon {
+    font-size: 24px;
+    margin-right: 10px;
+}
+
+.role-text {
+    display: flex;
+    flex-direction: column;
+}
+
+.role-text span {
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+.role-text strong {
+    font-size: 16px;
+}
+
+.error-message {
+    background: #f44336;
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+    margin-top: 10px;
+    text-align: center;
+}
+
+.self-answer-note {
+    color: #aaa;
+    font-style: italic;
+    margin-top: 10px;
+    padding: 5px;
+    border-left: 2px solid #666;
+}
+
+/* Estilos para o spinner de carregamento */
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    margin: 20px auto;
+    border: 4px solid rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    border-top: 4px solid #4CAF50;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Estilos para o timer */
+#answer-timer, #waiting-timer {
+    font-weight: bold;
+    color: #ff9800;
+}
+
+.skip-result .result-number {
+    color: #aaaaaa;
+}
+
+.skip-bar {
+    background-color: #555555;
+}
+
+/* Estilos para o campo de resposta */
+#answer-input {
+    width: 100%;
+    min-height: 120px;
+    padding: 15px;
+    margin: 15px 0;
+    background-color: #3a3a3a;
+    border: 2px solid #4a4a4a;
+    border-radius: 8px;
+    color: #f0f0f0;
+    font-size: 16px;
+    line-height: 1.5;
+    resize: vertical;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    font-family: 'Arial', sans-serif;
+}
+
+#answer-input:focus {
+    outline: none;
+    border-color: #5c6bc0;
+    box-shadow: 0 0 8px rgba(92, 107, 192, 0.5);
+}
+
+.answer-button {
+    background: linear-gradient(to right, #3f51b5, #5c6bc0);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    transition: all 0.3s;
+    display: block;
+    margin: 15px auto;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.answer-button:hover {
+    background: linear-gradient(to right, #303f9f, #3f51b5);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.answer-button:active {
+    transform: translateY(1px);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.answer-timer {
+    font-size: 18px;
+    font-weight: bold;
+    color: #ff9800;
+    text-align: center;
+    margin: 10px 0;
+    animation: pulse 1s infinite alternate;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.7; }
+    50% { opacity: 1; }
+    100% { opacity: 0.7; }
+}
+
+.vote-button {
+    background: linear-gradient(to right, #4CAF50, #45a049);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    transition: all 0.3s;
+    display: block;
+    margin: 10px auto;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    width: 80%;
+}
+
+.vote-button:hover {
+    background: linear-gradient(to right, #45a049, #388E3C);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.vote-button:active {
+    transform: translateY(1px);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.vote-button:disabled {
+    background: linear-gradient(to right, #888, #777);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
 } 
