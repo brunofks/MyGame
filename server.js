@@ -438,16 +438,16 @@ function processVotes(game) {
     // Verificar condições de vitória
     let gameWinner = null;
     
-    // Verificar se a IA ganhou (12 pontos)
-    if (game.aiScore >= 12) {
+    // Verificar se a IA ganhou (20 pontos)
+    if (game.aiScore >= 20) {
         gameWinner = {
             type: 'ai',
             name: 'IA',
             score: game.aiScore
         };
     } else {
-        // Verificar se algum jogador ganhou (10 pontos)
-        const winningPlayer = game.players.find(p => (p.score || 0) >= 10);
+        // Verificar se algum jogador ganhou (20 pontos)
+        const winningPlayer = game.players.find(p => (p.score || 0) >= 20);
         if (winningPlayer) {
             gameWinner = {
                 type: 'player',
@@ -495,9 +495,8 @@ function processVotes(game) {
     
     // Se temos um vencedor, terminar o jogo
     if (gameWinner) {
-        setTimeout(() => {
-            endGame(game, gameWinner);
-        }, 5000);
+        console.log(`Vencedor encontrado: ${gameWinner.type === 'ai' ? 'IA' : gameWinner.name} com ${gameWinner.score} pontos`);
+        endGame(game, gameWinner);
         return;
     }
 }
