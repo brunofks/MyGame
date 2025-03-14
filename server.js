@@ -291,25 +291,61 @@ function startVotingPhase(game) {
         answers: anonymousAnswers
     });
     
+    // Atualizar o estado do jogo para todos os jogadores
     updateGameState(game);
+    
+    // Calcular o número esperado de votos (todos os jogadores devem votar)
+    const expectedVotes = game.players.length;
+    
+    // Definir um timeout para caso nem todos os jogadores votem em 45 segundos
+    game.voteTimeout = setTimeout(() => {
+        console.log(`Tempo de votação esgotado para o jogo ${game.id}`);
+        
+        // Verificar quais jogadores não votaram
+        const votedPlayerIds = game.votes.map(v => v.playerId);
+        const nonVotingPlayers = game.players.filter(p => !votedPlayerIds.includes(p.id));
+        
+        // Registrar votos automáticos para jogadores que não votaram
+        nonVotingPlayers.forEach(player => {
+            console.log(`Jogador ${player.name} (${player.id}) não votou a tempo. Registrando voto automático.`);
+            
+            // Encontrar respostas em que o jogador pode votar (não pode ser a própria resposta)
+            const validAnswers = game.currentAnswers.filter(a => a.authorId !== player.id);
+            
+            if (validAnswers.length > 0) {
+                // Escolher uma resposta aleatória entre as válidas
+                const randomIndex = Math.floor(Math.random() * validAnswers.length);
+                const answerIndex = game.currentAnswers.indexOf(validAnswers[randomIndex]);
+                
+                game.votes.push({
+                    playerId: player.id,
+                    answerIndex: answerIndex
+                });
+            }
+        });
+        
+        // Processar os votos
+        processVotes(game);
+    }, 45000); // 45 segundos para votar
 }
 
 function processVotes(game) {
     console.log("Processando votos para o jogo", game.id);
     
+    // Cancelar o timeout de votação se existir
+    if (game.voteTimeout) {
+        clearTimeout(game.voteTimeout);
+        game.voteTimeout = null;
+    }
+    
     // Contar votos
     const voteCount = {};
-    let skipVotes = 0;
     
     game.votes.forEach(vote => {
-        if (vote.answerIndex === 'skip') {
-            skipVotes++;
-        } else {
-            if (!voteCount[vote.answerIndex]) {
-                voteCount[vote.answerIndex] = 0;
-            }
-            voteCount[vote.answerIndex]++;
+        if (!voteCount[vote.answerIndex]) {
+            voteCount[vote.answerIndex] = 0;
         }
+        voteCount[vote.answerIndex]++;
     });
     
     // Calcular porcentagens
@@ -321,7 +357,6 @@ function processVotes(game) {
     }));
     
     console.log("Resultados da votação:", results);
-    console.log("Votos para pular:", skipVotes);
     
     // Encontrar o índice da resposta da IA
     const aiAnswerIndex = game.currentAnswers.findIndex(a => a.source === 'ai');
@@ -346,6 +381,16 @@ function processVotes(game) {
         // Contar votos para esta resposta
         const result = results.find(r => r.answerIndex === index);
         const votesReceived = result ? result.votes : 0;
+        
+        // Encontrar quem votou nesta resposta
+        const votersIds = game.votes
+            .filter(v => v.answerIndex === index)
+            .map(v => v.playerId);
+            
+        const voters = votersIds.map(id => {
+            const player = game.players.find(p => p.id === id);
+            return player ? { id: player.id, name: player.name, color: player.color } : null;
+        }).filter(v => v !== null);
         
         // Se esta é uma resposta humana, dar pontos ao autor por cada voto recebido
         if (answer.source === 'human' && authorId) {
@@ -379,7 +424,8 @@ function processVotes(game) {
             authorId: authorId,
             authorName: authorName,
             index: index,
-            votesReceived: votesReceived
+            votesReceived: votesReceived,
+            voters: voters
         };
     });
     
@@ -414,13 +460,27 @@ function processVotes(game) {
     
     game.phase = 'results';
     game.voteResults = results;
+    game.readyForNextRound = new Set(); // Inicializar conjunto de jogadores prontos para a próxima rodada
+    
+    // Registrar os dados completos para depuração
+    console.log("Enviando resultados completos:", {
+        results: results,
+        answers: answersWithSources,
+        question: game.currentQuestion,
+        aiAnswerIndex: aiAnswerIndex,
+        aiCorrectlyIdentified: aiCorrectlyIdentified,
+        aiScore: game.aiScore,
+        playerScores: game.players.map(p => ({
+            id: p.id,
+            name: p.name,
+            score: p.score || 0
+        }))
+    });
     
     io.to(game.id).emit('vote-results', {
         results: results,
         answers: answersWithSources,
         question: game.currentQuestion,
-        skipVotes: skipVotes,
-        skipPercentage: Math.round((skipVotes / totalVotes) * 100),
         aiAnswerIndex: aiAnswerIndex,
         aiCorrectlyIdentified: aiCorrectlyIdentified,
         aiScore: game.aiScore,
@@ -440,23 +500,6 @@ function processVotes(game) {
         }, 5000);
         return;
     }
-    
-    // Preparar para a próxima rodada após 10 segundos
-    setTimeout(() => {
-        // Limpar o estado de autor da resposta para todos os jogadores
-        game.players.forEach(player => {
-            player.isAnswerAuthor = false;
-        });
-        
-        // Avançar para o próximo jogador para fazer a pergunta
-        game.questionAuthorIndex = (game.questionAuthorIndex + 1) % game.players.length;
-        game.currentQuestionAuthorId = game.players[game.questionAuthorIndex].id;
-        
-        game.round++;
-        game.phase = 'question';
-        game.currentAnswers = [];
-        updateGameState(game);
-    }, 10000);
 }
 
 function endGame(game, winner) {
@@ -554,6 +597,12 @@ io.on('connection', (socket) => {
         game.currentAnswers = [];
         game.currentQuestion = data.question;
         
+        // Inicializar o rastreamento de respostas
+        game.responseStatus = {};
+        game.players.forEach(player => {
+            game.responseStatus[player.id] = false; // Ninguém respondeu ainda
+        });
+        
         // Gerar resposta da IA
         console.log("Gerando resposta da IA...");
         try {
@@ -589,10 +638,13 @@ io.on('connection', (socket) => {
             setTimeout(() => {
                 io.to(player.id).emit('answer-request', {
                     question: data.question,
-                    timeLimit: 30 // 30 segundos para responder
+                    timeLimit: 80 // 80 segundos para responder
                 });
             }, 500);
         });
+        
+        // Enviar evento de espera apenas para o autor da pergunta inicialmente
+        sendResponseStatusUpdate(game, [socket.id]);
         
         // Definir um timeout para caso algum jogador não responda
         game.answerTimeout = setTimeout(() => {
@@ -617,15 +669,54 @@ io.on('connection', (socket) => {
                     source: 'human',
                     authorId: player.id
                 });
+                
+                // Atualizar o status de resposta
+                game.responseStatus[player.id] = true;
             });
+            
+            // Enviar uma atualização final do status
+            sendResponseStatusUpdate(game);
             
             // Iniciar a fase de votação se temos pelo menos uma resposta
             if (game.currentAnswers.length > 0) {
                 startVotingPhase(game);
             }
-        }, 30000); // 30 segundos
+        }, 80000); // 80 segundos
     });
     
+    // Função para enviar atualizações de status das respostas
+    function sendResponseStatusUpdate(game, excludePlayerIds = []) {
+        // Preparar dados de status para envio
+        const playersStatus = game.players.map(player => {
+            return {
+                id: player.id,
+                name: player.name,
+                color: player.color,
+                responded: game.responseStatus[player.id] || false
+            };
+        });
+        
+        // Filtrar jogadores que já responderam ou que devem ser excluídos
+        const playersToUpdate = game.players.filter(player => 
+            (game.responseStatus[player.id] || excludePlayerIds.includes(player.id)) && 
+            !player.disconnected
+        );
+        
+        // Enviar evento de espera apenas para jogadores que já responderam ou que devem ser excluídos
+        playersToUpdate.forEach(player => {
+            io.to(player.id).emit('waiting-for-answers', {
+                message: `Aguardando respostas para a pergunta: "${game.currentQuestion}"`,
+                timeLimit: 80, // 80 segundos
+                players: playersStatus
+            });
+        });
+        
+        // Enviar evento de atualização de status para todos os jogadores
+        io.to(game.id).emit('response-status-update', {
+            players: playersStatus
+        });
+    }
+
     // Evento para receber a resposta do jogador
     socket.on('submit-answer', (data) => {
         const game = getGameBySocket(socket);
@@ -654,20 +745,39 @@ io.on('connection', (socket) => {
             authorId: socket.id
         });
         
-        // Verificar se todos os jogadores (exceto o autor da pergunta) responderam
-        const expectedResponses = game.players.length - 1; // Todos menos o autor da pergunta
-        const receivedResponses = game.currentAnswers.filter(a => a.source === 'human').length;
+        // Atualizar o status de resposta
+        game.responseStatus[socket.id] = true;
         
-        console.log(`Recebidas ${receivedResponses} de ${expectedResponses} respostas esperadas`);
+        // Agora este jogador deve ver a tela de espera
+        io.to(socket.id).emit('waiting-for-answers', {
+            message: `Aguardando respostas para a pergunta: "${game.currentQuestion}"`,
+            timeLimit: 80, // 80 segundos
+            players: game.players.map(player => ({
+                id: player.id,
+                name: player.name,
+                color: player.color,
+                responded: game.responseStatus[player.id] || false
+            }))
+        });
         
-        if (receivedResponses >= expectedResponses) {
+        // Enviar atualização de status para todos os jogadores
+        sendResponseStatusUpdate(game);
+        
+        // Verificar se todos os jogadores responderam
+        const allResponded = game.players.every(player => game.responseStatus[player.id]);
+        
+        console.log(`Recebidas ${game.currentAnswers.filter(a => a.source === 'human').length} respostas de ${game.players.length} jogadores. Todos responderam: ${allResponded}`);
+        
+        if (allResponded) {
+            console.log("Todos os jogadores responderam. Iniciando fase de votação...");
+            
             // Cancelar o timeout se existir
             if (game.answerTimeout) {
                 clearTimeout(game.answerTimeout);
                 game.answerTimeout = null;
             }
             
-            // Iniciar a fase de votação
+            // Iniciar a fase de votação imediatamente
             startVotingPhase(game);
         }
     });
@@ -701,11 +811,59 @@ io.on('connection', (socket) => {
         }
         
         // Verificar se todos os jogadores votaram
-        const expectedVotes = game.players.length;
+        // Cada jogador deve votar, exceto em sua própria resposta
+        const totalPlayers = game.players.length;
+        const expectedVotes = totalPlayers;
         
-        // O autor da pergunta também vota
+        console.log(`Recebidos ${game.votes.length} votos de ${expectedVotes} esperados`);
+        
+        // Processar os votos apenas quando todos os jogadores tiverem votado
         if (game.votes.length >= expectedVotes) {
             processVotes(game);
+        } else {
+            // Notificar todos os jogadores sobre o novo voto
+            io.to(game.id).emit('vote-update', {
+                votesReceived: game.votes.length,
+                totalExpected: expectedVotes
+            });
+        }
+    });
+    
+    // Novo evento para quando um jogador está pronto para a próxima rodada
+    socket.on('ready-for-next-round', () => {
+        const game = getGameBySocket(socket);
+        if (!game || game.phase !== 'results') return;
+        
+        console.log(`Jogador ${socket.id} está pronto para a próxima rodada`);
+        
+        // Adicionar este jogador ao conjunto de jogadores prontos
+        game.readyForNextRound.add(socket.id);
+        
+        // Verificar se todos os jogadores estão prontos
+        const allReady = game.players.every(player => game.readyForNextRound.has(player.id));
+        
+        // Atualizar o estado para todos os jogadores
+        io.to(game.id).emit('players-ready-update', {
+            readyPlayers: Array.from(game.readyForNextRound),
+            totalPlayers: game.players.length
+        });
+        
+        if (allReady) {
+            console.log(`Todos os jogadores estão prontos. Avançando para a próxima rodada.`);
+            
+            // Limpar o estado de autor da resposta para todos os jogadores
+            game.players.forEach(player => {
+                player.isAnswerAuthor = false;
+            });
+            
+            // Avançar para o próximo jogador para fazer a pergunta
+            game.questionAuthorIndex = (game.questionAuthorIndex + 1) % game.players.length;
+            game.currentQuestionAuthorId = game.players[game.questionAuthorIndex].id;
+            
+            game.round++;
+            game.phase = 'question';
+            game.currentAnswers = [];
+            updateGameState(game);
         }
     });
     

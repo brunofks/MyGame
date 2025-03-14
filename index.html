@@ -1,28 +1,27 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-br">
 <head>
-    <title>Turing Test com Sabotador</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo de Identificação de IA</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div id="login-screen">
-        <input type="text" id="playerName" placeholder="Seu nome">
+        <h1>Jogo de Identificação de IA</h1>
+        <p>Tente identificar qual resposta foi gerada por uma IA!</p>
+        <input type="text" id="playerName" placeholder="Digite seu nome">
         <button onclick="joinGame()">Entrar no Jogo</button>
     </div>
-
+    
     <div id="game-container" class="hidden">
         <div id="players-list"></div>
-        
-        <div id="chat-container">
-            <div id="chat-messages"></div>
-            <button id="mic-button" onclick="toggleMic()">🎤</button>
-        </div>
-
-        <div id="game-phase">
-            <!-- Área dinâmica para cada fase do jogo -->
-        </div>
+        <div id="game-phase"></div>
     </div>
-
+    
+    <!-- Botão de microfone flutuante -->
+    <button id="mic-button" onclick="toggleMic()" title="Ativar/Desativar microfone">🎤</button>
+    
     <script src="/socket.io/socket.io.js"></script>
     <script src="game.js"></script>
 </body>

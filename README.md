@@ -1,30 +1,34 @@
-# Jogo Multiplayer Online - Teste de Turing com Sabotador
-
-Um jogo multiplayer baseado no Teste de Turing, onde jogadores tentam identificar quem é a IA e quem é o sabotador.
+# Jogo Multiplayer Online - Teste de Turing onde todos os jogadores devem se comportarem como uma IA.
 
 ## Descrição
+Um jogo multiplayer baseado no Teste de Turing e no boardgame Dixit, onde jogadores tentam identificar quem é a IA.
 
-Neste jogo, 3-6 jogadores participam de uma partida onde:
-- Cada jogador recebe um código aleatório (P1, P2, P3...)
-- Um jogador é secretamente designado como sabotador
-- Uma IA também participa, se passando por um jogador
+# Jogo de Adivinhação com IA
 
-O objetivo dos jogadores é descobrir quem é a IA, enquanto o sabotador tenta identificar a identidade real de um dos jogadores.
+## Objetivo
+O objetivo do jogo é ser o primeiro a atingir 20 pontos.
+
+## Regras
+- Cada vez que alguém escolhe a sua resposta, você ganha 1 ponto.
+- Sempre que acertar qual era a resposta da IA, você ganha 3 pontos.
+- Se ninguém acertar qual é a resposta da IA, a IA ganha 3 pontos.
 
 ## Como Jogar
+1. Cada participante deve registrar-se no jogo informando seu nome.
+2. O sistema selecionará aleatoriamente um jogador para iniciar a primeira rodada.
+3. O jogador escolhido deve formular uma pergunta para todos responderem.
+4. Todos os jogadores, incluindo a IA, devem responder à pergunta proposta.
+5. O sistema exibirá todas as respostas (dos jogadores e da IA) de forma anônima.
+6. Cada jogador deve tentar identificar qual resposta foi dada pela IA.
+7. Após todos votarem, o jogo revelará quem votou em cada resposta.
+8. A pontuação será calculada e distribuída conforme as regras estabelecidas.
+9. Antes de iniciar uma nova rodada, todos os jogadores devem confirmar que estão prontos.
+10. Na rodada seguinte, o jogador à direita de quem iniciou a rodada anterior será o responsável por fazer a nova pergunta.
+11. O primeiro jogador a acumular 20 pontos será declarado vencedor.
 
-1. **Fase de Pergunta**: Todos discutem qual pergunta será feita para identificar a IA
-2. **Fase de Resposta**: Um jogador aleatório e a IA respondem à pergunta
-3. **Fase de Votação**: Jogadores votam em qual resposta pertence à IA
-4. **Resultado Parcial**: O jogo exibe a porcentagem de votos
-5. **Discussão & Decisão**: Jogadores debatem se querem identificar a IA ou seguir para a próxima rodada
-6. **Sabotagem Oculta**: O sabotador pode tentar identificar um jogador real
-
-## Condições de Vitória
-
-- **Jogadores**: Descobrir corretamente quem é a IA dentro de três rodadas
-- **IA e Sabotador**: Não serem descobertos até o fim da terceira rodada
-- **Sabotador**: Identificar corretamente a identidade real de um jogador
+## Requisitos
+- Número mínimo de jogadores: 2
+- Número máximo de jogadores: 6
 
 ## Instalação e Execução
 

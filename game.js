@@ -6,7 +6,8 @@ let localState = {
     round: 0,
     score: 0,
     aiScore: 0,
-    isQuestionAuthor: false
+    isQuestionAuthor: false,
+    isAnswering: false
 };
 
 // Controles de voz
@@ -27,6 +28,19 @@ function joinGame() {
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('game-container').classList.remove('hidden');
 }
+
+// Adicionar evento de tecla para o campo de nome
+document.addEventListener('DOMContentLoaded', function() {
+    const playerNameInput = document.getElementById('playerName');
+    if (playerNameInput) {
+        playerNameInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                joinGame();
+            }
+        });
+    }
+});
 
 // Função para iniciar o jogo
 function startGame() {
@@ -54,11 +68,26 @@ async function toggleMic() {
     isMicActive = !isMicActive;
 }
 
-function updateGamePhase(phase) {
+function updateGamePhase(phase, data) {
+    console.log("Atualizando fase do jogo para:", phase, data);
+    
     const gamePhase = document.getElementById('game-phase');
+    if (!gamePhase) {
+        console.error("Elemento game-phase não encontrado!");
+        return;
+    }
+    
+    // Atualizar a fase local
+    localState.phase = phase;
+    
+    // Limpar qualquer conteúdo anterior
     gamePhase.innerHTML = '';
-
-    switch(phase) {
+    
+    // Criar o contêiner da fase
+    const phaseBox = document.createElement('div');
+    phaseBox.className = 'phase-box';
+    
+    switch (phase) {
         case 'lobby':
             let lobbyContent = `<div class="phase-box">
                 <h3>Aguardando Jogadores</h3>
@@ -77,20 +106,23 @@ function updateGamePhase(phase) {
             }
             
             lobbyContent += `</div>`;
-            gamePhase.innerHTML = lobbyContent;
+            phaseBox.innerHTML = lobbyContent;
             break;
             
         case 'question':
             // Interface diferente para o autor da pergunta e para os outros jogadores
             if (localState.isQuestionAuthor) {
-                gamePhase.innerHTML = `<div class="phase-box">
+                phaseBox.innerHTML = `<div class="phase-box">
                     <h3>Fase de Perguntas (Rodada ${localState.round})</h3>
                     <p>É sua vez de fazer uma pergunta! Escolha uma pergunta que ajude a identificar a resposta da IA.</p>
                     <textarea id="question-input" placeholder="Digite sua pergunta aqui..."></textarea>
                     <button onclick="submitQuestion()" class="answer-button">Enviar Pergunta</button>
                 </div>`;
+                
+                // Configurar evento de tecla para o campo de pergunta
+                setTimeout(setupQuestionInputKeyEvent, 100);
             } else {
-                gamePhase.innerHTML = `<div class="phase-box">
+                phaseBox.innerHTML = `<div class="phase-box">
                     <h3>Fase de Perguntas (Rodada ${localState.round})</h3>
                     <p>Aguardando o jogador designado fazer uma pergunta...</p>
                     <div class="loading-spinner"></div>
@@ -98,39 +130,63 @@ function updateGamePhase(phase) {
             }
             break;
         
-        case 'vote':
-            // A interface de votação será preenchida quando recebermos os dados de votação
-            gamePhase.innerHTML = `<div class="phase-box">
-                <h3>Fase de Votação (Rodada ${localState.round})</h3>
-                <p>Aguardando dados para votação...</p>
-                <div class="loading-spinner"></div>
-            </div>`;
+        case 'answer':
+            // ... existing code ...
+            break;
             
-            // Se já temos dados de votação, mostrar as respostas
-            if (localState.voteData) {
-                showAnswersForVoting(localState.voteData);
+        case 'vote':
+            // Fase de votação
+            const voteTitle = document.createElement('h3');
+            voteTitle.textContent = `Fase de Votação (Rodada ${localState.round})`;
+            
+            const voteInstructions = document.createElement('p');
+            voteInstructions.textContent = 'Vote em qual resposta você acha que foi dada pela IA:';
+            
+            const questionBox = document.createElement('div');
+            questionBox.className = 'question-box';
+            questionBox.textContent = data.question;
+            
+            const answersContainer = document.createElement('div');
+            answersContainer.id = 'answers-container';
+            answersContainer.className = 'answers';
+            
+            phaseBox.appendChild(voteTitle);
+            phaseBox.appendChild(voteInstructions);
+            phaseBox.appendChild(questionBox);
+            phaseBox.appendChild(answersContainer);
+            
+            // Mostrar as respostas para votação se disponíveis
+            if (data.answers && data.answers.length > 0) {
+                showAnswersForVoting(data);
             }
             break;
             
         case 'results':
-            gamePhase.innerHTML = `<div class="phase-box">
+            phaseBox.innerHTML = `<div class="phase-box">
                 <h3>Resultados (Rodada ${localState.round})</h3>
                 <p>Veja como os jogadores votaram:</p>
                 <div id="results-container"></div>
+                <div id="ready-players-container" class="ready-players-container">
+                    <p>Jogadores prontos para a próxima rodada: <span id="ready-count">0</span>/<span id="total-players">${localState.players.length}</span></p>
+                    <div id="ready-players-list" class="ready-players-list"></div>
+                </div>
+                <button id="next-round-button" onclick="readyForNextRound()" class="next-round-button">Estou pronto para a próxima rodada</button>
             </div>`;
             break;
             
-        case 'gameOver':
-            gamePhase.innerHTML = `<div class="phase-box">
+        case 'game-over':
+            phaseBox.innerHTML = `<div class="phase-box">
                 <h3>Fim de Jogo</h3>
                 <div id="final-results"></div>
                 <button onclick="location.reload()" class="answer-button">Jogar Novamente</button>
             </div>`;
             break;
+        
+        default:
+            phaseBox.innerHTML = `<h3>Fase desconhecida: ${phase}</h3>`;
     }
     
-    // Atualizar o placar sempre que a fase mudar
-    updateScoreboard();
+    gamePhase.appendChild(phaseBox);
 }
 
 function updatePlayersList(players) {
@@ -260,7 +316,7 @@ socket.on('game-update', (state) => {
     
     // Atualizar a interface
     updatePlayersList(state.players);
-    updateGamePhase(state.phase);
+    updateGamePhase(state.phase, state.voteData);
     updateScoreboard();
     
     // Se estamos na fase de votação e temos dados de votação, mostrar as respostas
@@ -308,120 +364,180 @@ socket.on('new-message', (msg) => {
 function showAnswersForVoting(data) {
     console.log("Mostrando respostas para votação:", data);
     
-    try {
-        // Atualizar a interface para mostrar as respostas
-        const gamePhase = document.getElementById('game-phase');
-        if (!gamePhase) {
-            console.error("Elemento game-phase não encontrado!");
-            return;
-        }
-        
-        // Verificar se o jogador atual é o autor de alguma resposta
-        const myAnswerIndex = data.answers.findIndex(a => a.authorId === socket.id);
-        const canVote = myAnswerIndex === -1; // Pode votar se não for autor de nenhuma resposta
-        
-        gamePhase.innerHTML = `<div class="phase-box">
-            <h3>Fase de Votação (Rodada ${localState.round})</h3>
-            <p>Vote em qual resposta você acha que foi dada pela IA:</p>
-            <div class="question-box">"${data.question}"</div>
-            <div id="answers-container" class="answers"></div>
-        </div>`;
-        
-        const answersContainer = document.getElementById('answers-container');
-        if (!answersContainer) {
-            console.error("Elemento answers-container não encontrado!");
-            return;
-        }
-        
-        // Verificar se temos respostas para mostrar
-        if (!data.answers || data.answers.length === 0) {
-            console.error("Nenhuma resposta recebida para votação!");
-            answersContainer.innerHTML = `<div class="error-message">Nenhuma resposta disponível para votação.</div>`;
-            return;
-        }
-        
-        // Mostrar as respostas sem identificar qual é da IA
-        data.answers.forEach((answer, index) => {
-            console.log(`Renderizando resposta ${index + 1}:`, answer);
-            
-            // Verificar se esta é a resposta do jogador atual
-            const isMyAnswer = answer.authorId === socket.id;
-            
-            // Encontrar a cor do autor da resposta (se for um jogador)
-            let authorColor = '#555'; // Cor padrão
-            if (answer.authorId) {
-                const author = localState.players.find(p => p.id === answer.authorId);
-                if (author && author.color) {
-                    authorColor = author.color;
-                }
-            }
-            
-            // Estilo para a borda da resposta
-            const answerStyle = isMyAnswer ? 
-                `border-left: 4px solid ${authorColor}; background-color: ${authorColor}20;` : 
-                '';
-            
-            answersContainer.innerHTML += `
-                <div class="answer-card ${isMyAnswer ? 'my-answer' : ''}" style="${answerStyle}">
-                    <div class="answer-number" style="${isMyAnswer ? `color: ${authorColor};` : ''}">
-                        Resposta ${index + 1} ${isMyAnswer ? '(Sua resposta)' : ''}
-                    </div>
-                    <div class="answer-text">${answer.answer}</div>
-                    ${!isMyAnswer && canVote ? `<button onclick="voteForAnswer(${index})" class="vote-button">Votar como IA</button>` : ''}
-                    ${isMyAnswer ? `<div class="self-answer-note">Você não pode votar na sua própria resposta</div>` : ''}
-                </div>
-            `;
-        });
-        
-        // Adicionar opção para pular
-        if (canVote) {
-            answersContainer.innerHTML += `
-                <div class="skip-option">
-                    <button onclick="voteForAnswer('skip')">Pular</button>
-                </div>
-            `;
-        } else {
-            // Se o jogador é autor de uma resposta, mostrar mensagem
-            answersContainer.innerHTML += `
-                <div class="author-message">
-                    <p>Você escreveu uma das respostas, então não pode votar nesta rodada.</p>
-                </div>
-            `;
-            
-            // Enviar voto automático para pular
-            socket.emit('vote', { answerIndex: 'skip' });
-        }
-        
-        console.log("Interface de votação renderizada com sucesso");
-    } catch (error) {
-        console.error("Erro ao processar respostas para votação:", error);
+    if (!data || !data.answers || data.answers.length === 0) {
+        console.error("Dados de votação inválidos ou vazios:", data);
+        return;
     }
+    
+    const answersContainer = document.getElementById('answers-container');
+    if (!answersContainer) {
+        console.error("Contêiner de respostas não encontrado!");
+        return;
+    }
+    
+    // Limpar o contêiner
+    answersContainer.innerHTML = '';
+    
+    // Adicionar contador de votos
+    const voteCounter = document.createElement('div');
+    voteCounter.id = 'vote-counter';
+    voteCounter.className = 'vote-counter';
+    voteCounter.innerHTML = 'Escolha uma resposta para votar';
+    answersContainer.appendChild(voteCounter);
+    
+    // Adicionar respostas para votação
+    data.answers.forEach((answer, index) => {
+        const answerCard = document.createElement('div');
+        answerCard.className = 'answer-card';
+        
+        // Verificar se esta resposta é do jogador atual
+        const isPlayerAnswer = answer.authorId === socket.id;
+        
+        // Adicionar conteúdo da resposta
+        const answerContent = document.createElement('div');
+        answerContent.className = 'answer-content';
+        answerContent.textContent = answer.answer;
+        answerCard.appendChild(answerContent);
+        
+        // Adicionar botão de voto (exceto para a própria resposta do jogador)
+        if (!isPlayerAnswer) {
+            const voteButton = document.createElement('button');
+            voteButton.className = 'vote-button';
+            voteButton.textContent = 'Votar';
+            voteButton.dataset.index = index;
+            
+            voteButton.addEventListener('click', function() {
+                // Desabilitar todos os botões de voto após o jogador votar
+                document.querySelectorAll('.vote-button').forEach(btn => {
+                    btn.disabled = true;
+                    btn.classList.add('voted');
+                });
+                
+                // Destacar o botão selecionado
+                this.classList.add('selected');
+                
+                // Enviar voto para o servidor
+                socket.emit('vote', { answerIndex: index });
+                
+                // Atualizar mensagem
+                document.getElementById('vote-counter').innerHTML = 'Seu voto foi registrado. Aguardando outros jogadores...';
+            });
+            
+            answerCard.appendChild(voteButton);
+        } else {
+            // Se for a resposta do próprio jogador, mostrar uma indicação
+            const ownAnswerLabel = document.createElement('div');
+            ownAnswerLabel.className = 'own-answer-label';
+            ownAnswerLabel.textContent = 'Sua resposta';
+            answerCard.appendChild(ownAnswerLabel);
+            
+            // Adicionar uma mensagem explicativa
+            const infoMessage = document.createElement('div');
+            infoMessage.className = 'info-message';
+            infoMessage.textContent = 'Você não pode votar na sua própria resposta';
+            answerCard.appendChild(infoMessage);
+        }
+        
+        answersContainer.appendChild(answerCard);
+    });
+    
+    // Adicionar instruções claras
+    const votingInstructions = document.createElement('div');
+    votingInstructions.className = 'voting-instructions';
+    votingInstructions.innerHTML = '<p>Escolha qual resposta você acredita que foi gerada pela IA. Você ganhará 3 pontos se acertar!</p>';
+    answersContainer.insertBefore(votingInstructions, answersContainer.firstChild);
 }
+
+// Adicionar evento para atualização de votos
+socket.on('vote-update', function(data) {
+    console.log('Atualização de votos:', data);
+    const voteCounter = document.getElementById('vote-counter');
+    if (voteCounter) {
+        voteCounter.innerHTML = `Votos recebidos: ${data.votesReceived} de ${data.totalExpected}`;
+    }
+});
 
 // Evento para mostrar os resultados da votação
 socket.on('vote-results', (data) => {
     console.log("Recebendo resultados da votação:", data);
     
-    // Atualizar a interface para mostrar os resultados
-    const gamePhase = document.getElementById('game-phase');
-    gamePhase.innerHTML = `<div class="phase-box">
-        <h3>Resultados (Rodada ${localState.round})</h3>
-        <p>Pergunta: "${data.question}"</p>
-        <div id="results-container" class="results"></div>
-    </div>`;
+    // Verificar se temos dados de respostas e votos
+    if (!data.answers || data.answers.length === 0) {
+        console.error("Dados de respostas inválidos ou vazios:", data);
+    } else {
+        console.log("Número de respostas recebidas:", data.answers.length);
+        data.answers.forEach((answer, index) => {
+            console.log(`Resposta ${index}: Autor=${answer.authorName}, Votos=${answer.voters ? answer.voters.length : 0}`);
+        });
+    }
     
-    const resultsContainer = document.getElementById('results-container');
+    // Preparar as linhas da tabela de votação
+    let votingTableRowsHTML = '';
+    data.playerScores.forEach(player => {
+        const playerColor = localState.players.find(p => p.id === player.id)?.color || '#555';
+        
+        // Encontrar em quem este jogador votou
+        let votedFor = "Ninguém";
+        let votedForColor = "#555";
+        let pointsGained = 0;
+        
+        // Procurar o voto deste jogador
+        for (const answer of data.answers) {
+            const voter = answer.voters.find(v => v.id === player.id);
+            if (voter) {
+                if (answer.source === 'ai') {
+                    votedFor = "IA";
+                    votedForColor = "#e74c3c";
+                    pointsGained = 3; // 3 pontos por acertar a IA
+                } else {
+                    votedFor = answer.authorName;
+                    const authorPlayer = localState.players.find(p => p.id === answer.authorId);
+                    votedForColor = authorPlayer?.color || "#555";
+                    pointsGained = 0; // Não ganha pontos por votar em humano
+                }
+                break;
+            }
+        }
+        
+        // Verificar se este jogador é autor de alguma resposta e quantos votos recebeu
+        for (const answer of data.answers) {
+            if (answer.source === 'human' && answer.authorId === player.id) {
+                const votesReceived = answer.voters.length;
+                if (votesReceived > 0) {
+                    pointsGained += votesReceived; // 1 ponto por cada voto recebido
+                }
+                break;
+            }
+        }
+        
+        votingTableRowsHTML += `
+            <div class="voting-table-row">
+                <div class="voting-table-cell player-cell" style="color: ${playerColor}; border-left: 4px solid ${playerColor};">
+                    ${player.name} ${player.id === socket.id ? '(Você)' : ''}
+                </div>
+                <div class="voting-table-cell voted-cell" style="color: ${votedForColor};">
+                    ${votedFor}
+                </div>
+                <div class="voting-table-cell points-cell">
+                    ${pointsGained} ${pointsGained === 1 ? 'ponto' : 'pontos'}
+                </div>
+            </div>
+        `;
+    });
+    
+    // Criar o conteúdo HTML para os resultados das respostas
+    let resultsHTML = '';
     
     // Mostrar se a IA foi identificada corretamente
     if (data.aiCorrectlyIdentified) {
-        resultsContainer.innerHTML += `
+        resultsHTML += `
             <div class="ai-identified">
                 <h4>A IA foi identificada corretamente!</h4>
                 <p>Os jogadores que votaram na resposta da IA ganharam 3 pontos cada.</p>
             </div>
         `;
     } else {
-        resultsContainer.innerHTML += `
+        resultsHTML += `
             <div class="ai-not-identified">
                 <h4>Ninguém identificou a IA!</h4>
                 <p>A IA ganhou 3 pontos nesta rodada.</p>
@@ -437,87 +553,99 @@ socket.on('vote-results', (data) => {
         // Determinar a classe CSS com base na origem
         let sourceClass = 'unknown-source';
         let sourceText = 'Desconhecido';
-        let authorInfo = '';
         
         // Encontrar a cor do autor da resposta (se for um jogador)
         let authorColor = '#555'; // Cor padrão
-        if (answer.authorId) {
-            const author = localState.players.find(p => p.id === answer.authorId);
-            if (author && author.color) {
-                authorColor = author.color;
-            }
-        }
+        let authorName = '';
         
         if (answer.source === 'ai') {
             sourceClass = 'ai-source';
             sourceText = 'IA';
+            authorColor = '#e74c3c'; // Vermelho para a IA
+            authorName = 'Inteligência Artificial';
         } else if (answer.source === 'human') {
             sourceClass = 'human-source';
             sourceText = 'Humano';
-            if (answer.authorName) {
-                authorInfo = `<div class="author-info" style="border-left: 2px solid ${authorColor}; color: ${authorColor};">Escrita por: ${answer.authorName}</div>`;
-                
-                // Adicionar informação sobre pontos ganhos
-                if (answer.votesReceived > 0) {
-                    authorInfo += `<div class="points-info">Ganhou ${answer.votesReceived} pontos por votos recebidos</div>`;
+            if (answer.authorId) {
+                const author = localState.players.find(p => p.id === answer.authorId);
+                if (author) {
+                    authorColor = author.color;
+                    authorName = author.name;
                 }
             }
         }
         
         // Destacar se esta é a resposta da IA
-        const isAiAnswer = index === data.aiAnswerIndex;
+        const isAiAnswer = answer.source === 'ai';
         if (isAiAnswer) {
             sourceClass += ' highlighted-ai';
         }
         
-        // Estilo para a borda da resposta
-        const resultStyle = answer.source === 'human' ? 
-            `border-left: 4px solid ${authorColor}; background-color: ${authorColor}10;` : 
-            '';
+        // Criar a lista de jogadores que votaram nesta resposta
+        let votersList = '';
+        if (answer.voters && answer.voters.length > 0) {
+            votersList = `
+                <div class="voters-list">
+                    <h5>Jogadores que votaram nesta resposta:</h5>
+                    <ul class="voters">
+                        ${answer.voters.map(voter => `
+                            <li class="voter" style="border-left: 4px solid ${voter.color}; background-color: ${voter.color}15;">
+                                <span class="voter-name" style="color: ${voter.color};">${voter.name} ${voter.id === socket.id ? '(Você)' : ''}</span>
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+            `;
+        } else {
+            votersList = `<div class="no-voters">Ninguém votou nesta resposta</div>`;
+        }
         
-        resultsContainer.innerHTML += `
-            <div class="result-card ${sourceClass}" style="${resultStyle}">
-                <div class="result-header">
-                    <div class="result-number">Resposta ${index + 1}</div>
-                    <div class="result-source">${sourceText} ${isAiAnswer ? '⭐' : ''}</div>
+        // Calcular pontos ganhos pelo autor (1 ponto por voto)
+        let pointsInfo = '';
+        if (answer.source === 'human' && voteResult.votes > 0) {
+            pointsInfo = `<div class="points-info">Ganhou ${voteResult.votes} ${voteResult.votes === 1 ? 'ponto' : 'pontos'} por votos recebidos</div>`;
+        }
+        
+        // Calcular pontos ganhos pelos votantes (3 pontos se acertou a IA)
+        let votersPointsInfo = '';
+        if (answer.source === 'ai' && answer.voters && answer.voters.length > 0) {
+            votersPointsInfo = `<div class="voters-points">Cada votante ganhou 3 pontos por identificar a IA</div>`;
+        }
+        
+        resultsHTML += `
+            <div class="result-card ${sourceClass}" style="border-left: 6px solid ${authorColor}; background-color: ${authorColor}10;">
+                <div class="result-header" style="border-bottom: 1px solid ${authorColor}30;">
+                    <div class="author-info" style="color: ${authorColor};">
+                        <span class="author-name">${authorName}</span>
+                        <span class="author-type">${sourceText} ${isAiAnswer ? '⭐' : ''}</span>
+                    </div>
                 </div>
                 <div class="result-text">${answer.answer}</div>
-                ${authorInfo}
                 <div class="result-votes">
-                    <div class="vote-bar" style="width: ${voteResult.percentage}%"></div>
-                    <div class="vote-text">${voteResult.votes} votos (${voteResult.percentage}%)</div>
+                    <div class="vote-bar" style="width: ${voteResult.percentage}%; background-color: ${authorColor}80;"></div>
+                    <div class="vote-text">${voteResult.votes} ${voteResult.votes === 1 ? 'voto' : 'votos'} (${voteResult.percentage}%)</div>
                 </div>
+                ${pointsInfo}
+                ${votersPointsInfo}
+                ${votersList}
             </div>
         `;
     });
     
-    // Mostrar os votos para pular, se houver
-    if (data.skipVotes > 0) {
-        resultsContainer.innerHTML += `
-            <div class="result-card skip-result">
-                <div class="result-header">
-                    <div class="result-number">Pular</div>
-                </div>
-                <div class="result-text">Jogadores que optaram por pular esta rodada</div>
-                <div class="result-votes">
-                    <div class="vote-bar skip-bar" style="width: ${data.skipPercentage}%"></div>
-                    <div class="vote-text">${data.skipVotes} votos (${data.skipPercentage}%)</div>
-                </div>
-            </div>
-        `;
-    }
-    
     // Mostrar placar atual
-    resultsContainer.innerHTML += `
+    resultsHTML += `
         <div class="current-scores">
             <h4>Placar Atual</h4>
             <div class="scores-list">
-                ${data.playerScores.map(player => `
-                    <div class="score-entry ${player.id === socket.id ? 'my-score' : ''}">
-                        <span class="player-name">${player.name} ${player.id === socket.id ? '(Você)' : ''}</span>
-                        <span class="player-score">${player.score} pts</span>
-                    </div>
-                `).join('')}
+                ${data.playerScores.map(player => {
+                    const playerColor = localState.players.find(p => p.id === player.id)?.color || '#555';
+                    return `
+                        <div class="score-entry ${player.id === socket.id ? 'my-score' : ''}" style="border-left: 4px solid ${playerColor}; background-color: ${playerColor}15;">
+                            <span class="player-name" style="color: ${playerColor};">${player.name} ${player.id === socket.id ? '(Você)' : ''}</span>
+                            <span class="player-score">${player.score} pts</span>
+                        </div>
+                    `;
+                }).join('')}
                 <div class="score-entry ai-score">
                     <span class="player-name">IA</span>
                     <span class="player-score">${data.aiScore} pts</span>
@@ -526,19 +654,144 @@ socket.on('vote-results', (data) => {
         </div>
     `;
     
-    // Adicionar mensagem sobre a próxima rodada
-    resultsContainer.innerHTML += `
-        <div class="next-round-info">
-            <p>Próxima rodada começará em alguns segundos...</p>
+    // Atualizar a interface para mostrar os resultados
+    const gamePhase = document.getElementById('game-phase');
+    
+    // Construir o HTML completo da fase de resultados
+    const resultsPhaseHTML = `
+        <div class="phase-box">
+            <h3>Resultados (Rodada ${localState.round})</h3>
+            <p>Pergunta: "${data.question}"</p>
+            
+            <div class="detailed-voting-summary">
+                <h4>Resumo Detalhado das Respostas e Votos</h4>
+                <div class="detailed-voting-table">
+                    <div class="detailed-table-header">
+                        <div class="detailed-cell header-cell" style="width: 20%;">Autor</div>
+                        <div class="detailed-cell header-cell" style="width: 40%;">Resposta</div>
+                        <div class="detailed-cell header-cell" style="width: 40%;">Votos Recebidos</div>
+                    </div>
+                    ${data.answers.map(answer => {
+                        const authorColor = answer.source === 'ai' ? '#e74c3c' : 
+                            (localState.players.find(p => p.id === answer.authorId)?.color || '#555');
+                        
+                        const authorName = answer.source === 'ai' ? 'Inteligência Artificial' : answer.authorName;
+                        
+                        // Lista de votantes formatada
+                        let votersHTML = '';
+                        if (answer.voters && answer.voters.length > 0) {
+                            votersHTML = answer.voters.map(voter => 
+                                `<span class="voter-chip" style="color: ${voter.color}; border: 1px solid ${voter.color}; background-color: ${voter.color}15;">
+                                    ${voter.name} ${voter.id === socket.id ? '(Você)' : ''}
+                                </span>`
+                            ).join('');
+                        } else {
+                            votersHTML = '<span class="no-votes">Nenhum voto</span>';
+                        }
+                        
+                        return `
+                            <div class="detailed-table-row">
+                                <div class="detailed-cell author-cell" style="color: ${authorColor}; border-left: 4px solid ${authorColor}; width: 20%;">
+                                    ${authorName} ${answer.source === 'ai' ? '(IA)' : ''}
+                                </div>
+                                <div class="detailed-cell answer-cell" style="width: 40%;">
+                                    "${answer.answer}"
+                                </div>
+                                <div class="detailed-cell voters-cell" style="width: 40%;">
+                                    ${votersHTML}
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+            
+            <div id="results-container" class="results">
+                ${resultsHTML}
+            </div>
+            
+            <div class="voting-summary">
+                <h4>Veja como os jogadores votaram:</h4>
+                <div class="voting-table">
+                    <div class="voting-table-header">
+                        <div class="voting-table-cell header-cell">Jogador</div>
+                        <div class="voting-table-cell header-cell">Votou em</div>
+                        <div class="voting-table-cell header-cell">Pontos ganhos</div>
+                    </div>
+                    ${votingTableRowsHTML}
+                </div>
+            </div>
+            
+            <div id="ready-players-container" class="ready-players-container">
+                <p>Jogadores prontos para a próxima rodada: <span id="ready-count">0</span>/<span id="total-players">${localState.players.length}</span></p>
+                <div id="ready-players-list" class="ready-players-list"></div>
+            </div>
+            
+            <button id="next-round-button" onclick="readyForNextRound()" class="next-round-button">
+                Estou pronto para a próxima rodada
+            </button>
         </div>
     `;
+    
+    // Aplicar o HTML à interface
+    gamePhase.innerHTML = resultsPhaseHTML;
+    
+    // Verificar se a tabela detalhada foi renderizada
+    console.log("Tabela detalhada renderizada:", !!document.querySelector('.detailed-voting-summary'));
     
     // Atualizar o placar local
     localState.aiScore = data.aiScore;
     
     // Atualizar o placar
     updateScoreboard();
+    
+    // Atualizar o contador de jogadores prontos
+    document.getElementById('total-players').textContent = localState.players.length;
 });
+
+// Evento para atualizar a lista de jogadores prontos para a próxima rodada
+socket.on('players-ready-update', (data) => {
+    console.log("Atualização de jogadores prontos:", data);
+    
+    const readyCount = document.getElementById('ready-count');
+    const readyPlayersList = document.getElementById('ready-players-list');
+    const nextRoundButton = document.getElementById('next-round-button');
+    
+    if (readyCount && readyPlayersList && nextRoundButton) {
+        readyCount.textContent = data.readyPlayers.length;
+        
+        // Atualizar a lista de jogadores prontos
+        readyPlayersList.innerHTML = '';
+        data.readyPlayers.forEach(playerId => {
+            const player = localState.players.find(p => p.id === playerId);
+            if (player) {
+                readyPlayersList.innerHTML += `
+                    <div class="ready-player" style="border-left: 2px solid ${player.color}; color: ${player.color};">
+                        ${player.name} ${player.id === socket.id ? '(Você)' : ''} ✓
+                    </div>
+                `;
+            }
+        });
+        
+        // Desabilitar o botão se o jogador atual já está pronto
+        if (data.readyPlayers.includes(socket.id)) {
+            nextRoundButton.disabled = true;
+            nextRoundButton.textContent = 'Você está pronto';
+        }
+    }
+});
+
+// Função para indicar que o jogador está pronto para a próxima rodada
+function readyForNextRound() {
+    console.log("Enviando sinal de pronto para a próxima rodada");
+    socket.emit('ready-for-next-round');
+    
+    const nextRoundButton = document.getElementById('next-round-button');
+    if (nextRoundButton) {
+        nextRoundButton.disabled = true;
+        nextRoundButton.textContent = 'Você está pronto';
+    }
+}
 
 socket.on('game-error', (error) => {
     alert(error.message);
@@ -575,12 +828,28 @@ function submitQuestion() {
     </div>`;
 }
 
+// Adicionar evento de tecla para o campo de pergunta quando for criado
+function setupQuestionInputKeyEvent() {
+    const questionInput = document.getElementById('question-input');
+    if (questionInput) {
+        questionInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submitQuestion();
+            }
+        });
+    }
+}
+
 // Evento para quando o jogador deve responder
 socket.on('answer-request', (data) => {
     console.log("Solicitação para responder à pergunta:", data.question);
     console.log("Dados recebidos:", JSON.stringify(data));
     
     try {
+        // Marcar que este jogador está na fase de resposta
+        localState.isAnswering = true;
+        
         // Atualizar a interface para permitir que o jogador responda
         const gamePhase = document.getElementById('game-phase');
         if (!gamePhase) {
@@ -604,6 +873,14 @@ socket.on('answer-request', (data) => {
             const answerInput = document.getElementById('answer-input');
             if (answerInput) {
                 answerInput.focus();
+                
+                // Adicionar evento de tecla para o campo de resposta
+                answerInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        submitPlayerAnswer(data.question);
+                    }
+                });
             }
         }, 100);
         
@@ -637,6 +914,19 @@ socket.on('waiting-for-answers', (data) => {
     console.log("Dados recebidos:", JSON.stringify(data));
     
     try {
+        // Se o jogador está na fase de resposta, não atualizar a interface
+        if (localState.isAnswering) {
+            console.log("Jogador está respondendo, ignorando evento waiting-for-answers");
+            
+            // Apenas atualizar a lista de status se já existir
+            const playersResponseContainer = document.getElementById('players-response-status');
+            if (playersResponseContainer) {
+                updateResponseStatusList(data.players);
+            }
+            
+            return;
+        }
+        
         // Atualizar a interface para mostrar que estamos aguardando
         const gamePhase = document.getElementById('game-phase');
         if (!gamePhase) {
@@ -644,12 +934,81 @@ socket.on('waiting-for-answers', (data) => {
             return;
         }
         
-        gamePhase.innerHTML = `<div class="phase-box">
-            <h3>Aguardando Respostas</h3>
-            <p>${data.message}</p>
-            <p>Tempo restante: <span id="waiting-timer">${data.timeLimit}</span> segundos</p>
-            <div class="loading-spinner"></div>
-        </div>`;
+        // Criar o contêiner da fase
+        const phaseBox = document.createElement('div');
+        phaseBox.className = 'phase-box';
+        
+        // Título e mensagem principal
+        const title = document.createElement('h3');
+        title.textContent = 'Aguardando Respostas';
+        
+        const message = document.createElement('p');
+        message.textContent = data.message;
+        
+        // Contêiner para o timer
+        const timerContainer = document.createElement('div');
+        timerContainer.className = 'answer-timer';
+        timerContainer.innerHTML = `Tempo restante: <span id="waiting-timer">${data.timeLimit}</span> segundos`;
+        
+        // Contêiner para a lista de jogadores
+        const playersResponseContainer = document.createElement('div');
+        playersResponseContainer.className = 'players-response-status';
+        playersResponseContainer.id = 'players-response-status';
+        
+        const responseStatusTitle = document.createElement('h4');
+        responseStatusTitle.textContent = 'Status das Respostas:';
+        playersResponseContainer.appendChild(responseStatusTitle);
+        
+        // Adicionar status para cada jogador
+        if (data.players && data.players.length > 0) {
+            data.players.forEach(player => {
+                const playerStatus = document.createElement('div');
+                playerStatus.className = `player-status ${player.responded ? 'responded' : 'waiting'}`;
+                playerStatus.id = `player-status-${player.id}`;
+                
+                // Usar a cor do jogador se disponível
+                const playerColor = player.color || '#555';
+                playerStatus.style.borderLeft = `4px solid ${playerColor}`;
+                playerStatus.style.backgroundColor = `${playerColor}10`;
+                
+                const statusIcon = document.createElement('span');
+                statusIcon.className = 'status-icon';
+                statusIcon.textContent = player.responded ? '✓' : '⏳';
+                
+                const playerName = document.createElement('span');
+                playerName.className = 'player-name';
+                playerName.textContent = `${player.name} ${player.id === socket.id ? '(Você)' : ''}`;
+                
+                const statusText = document.createElement('span');
+                statusText.className = 'status-text';
+                statusText.textContent = player.responded ? 'Respondeu' : 'Aguardando...';
+                
+                playerStatus.appendChild(statusIcon);
+                playerStatus.appendChild(playerName);
+                playerStatus.appendChild(statusText);
+                
+                playersResponseContainer.appendChild(playerStatus);
+            });
+        } else {
+            const noPlayersMessage = document.createElement('p');
+            noPlayersMessage.textContent = 'Aguardando informações dos jogadores...';
+            playersResponseContainer.appendChild(noPlayersMessage);
+        }
+        
+        // Adicionar spinner de carregamento
+        const loadingSpinner = document.createElement('div');
+        loadingSpinner.className = 'loading-spinner';
+        
+        // Montar a interface
+        phaseBox.appendChild(title);
+        phaseBox.appendChild(message);
+        phaseBox.appendChild(timerContainer);
+        phaseBox.appendChild(playersResponseContainer);
+        phaseBox.appendChild(loadingSpinner);
+        
+        // Limpar e adicionar o novo conteúdo
+        gamePhase.innerHTML = '';
+        gamePhase.appendChild(phaseBox);
         
         // Iniciar o contador regressivo
         let timeLeft = data.timeLimit;
@@ -670,6 +1029,117 @@ socket.on('waiting-for-answers', (data) => {
     }
 });
 
+// Função para atualizar a lista de status de resposta
+function updateResponseStatusList(players) {
+    if (!players || players.length === 0) return;
+    
+    const playersResponseContainer = document.getElementById('players-response-status');
+    if (!playersResponseContainer) return;
+    
+    // Limpar conteúdo existente, exceto o título
+    const responseStatusTitle = playersResponseContainer.querySelector('h4');
+    playersResponseContainer.innerHTML = '';
+    if (responseStatusTitle) {
+        playersResponseContainer.appendChild(responseStatusTitle);
+    } else {
+        const newTitle = document.createElement('h4');
+        newTitle.textContent = 'Status das Respostas:';
+        playersResponseContainer.appendChild(newTitle);
+    }
+    
+    // Adicionar status para cada jogador
+    players.forEach(player => {
+        const playerStatus = document.createElement('div');
+        playerStatus.className = `player-status ${player.responded ? 'responded' : 'waiting'}`;
+        playerStatus.id = `player-status-${player.id}`;
+        
+        // Usar a cor do jogador se disponível
+        const playerColor = player.color || '#555';
+        playerStatus.style.borderLeft = `4px solid ${playerColor}`;
+        playerStatus.style.backgroundColor = `${playerColor}10`;
+        
+        const statusIcon = document.createElement('span');
+        statusIcon.className = 'status-icon';
+        statusIcon.textContent = player.responded ? '✓' : '⏳';
+        
+        const playerName = document.createElement('span');
+        playerName.className = 'player-name';
+        playerName.textContent = `${player.name} ${player.id === socket.id ? '(Você)' : ''}`;
+        
+        const statusText = document.createElement('span');
+        statusText.className = 'status-text';
+        statusText.textContent = player.responded ? 'Respondeu' : 'Aguardando...';
+        
+        playerStatus.appendChild(statusIcon);
+        playerStatus.appendChild(playerName);
+        playerStatus.appendChild(statusText);
+        
+        playersResponseContainer.appendChild(playerStatus);
+    });
+}
+
+// Evento para atualizar o status das respostas dos jogadores
+socket.on('response-status-update', (data) => {
+    console.log("Atualização do status de respostas:", data);
+    
+    // Se o jogador está na fase de resposta, não atualizar a interface completa
+    if (localState.isAnswering) {
+        // Apenas atualizar a lista de status se já existir
+        updateResponseStatusList(data.players);
+        return;
+    }
+    
+    const playersResponseContainer = document.getElementById('players-response-status');
+    if (!playersResponseContainer) return;
+    
+    // Atualizar o status de cada jogador
+    data.players.forEach(player => {
+        const playerStatus = document.getElementById(`player-status-${player.id}`);
+        
+        if (playerStatus) {
+            // Atualizar classes e ícones
+            if (player.responded) {
+                playerStatus.classList.remove('waiting');
+                playerStatus.classList.add('responded');
+                
+                const statusIcon = playerStatus.querySelector('.status-icon');
+                if (statusIcon) statusIcon.textContent = '✓';
+                
+                const statusText = playerStatus.querySelector('.status-text');
+                if (statusText) statusText.textContent = 'Respondeu';
+            }
+        } else {
+            // Se o elemento não existir, criar um novo
+            const newPlayerStatus = document.createElement('div');
+            newPlayerStatus.className = `player-status ${player.responded ? 'responded' : 'waiting'}`;
+            newPlayerStatus.id = `player-status-${player.id}`;
+            
+            // Usar a cor do jogador se disponível
+            const playerColor = player.color || '#555';
+            newPlayerStatus.style.borderLeft = `4px solid ${playerColor}`;
+            newPlayerStatus.style.backgroundColor = `${playerColor}10`;
+            
+            const statusIcon = document.createElement('span');
+            statusIcon.className = 'status-icon';
+            statusIcon.textContent = player.responded ? '✓' : '⏳';
+            
+            const playerName = document.createElement('span');
+            playerName.className = 'player-name';
+            playerName.textContent = `${player.name} ${player.id === socket.id ? '(Você)' : ''}`;
+            
+            const statusText = document.createElement('span');
+            statusText.className = 'status-text';
+            statusText.textContent = player.responded ? 'Respondeu' : 'Aguardando...';
+            
+            newPlayerStatus.appendChild(statusIcon);
+            newPlayerStatus.appendChild(playerName);
+            newPlayerStatus.appendChild(statusText);
+            
+            playersResponseContainer.appendChild(newPlayerStatus);
+        }
+    });
+});
+
 // Evento para preparar o jogador para responder
 socket.on('prepare-for-answer', (data) => {
     console.log("Preparando para responder:", data.message);
@@ -677,17 +1147,93 @@ socket.on('prepare-for-answer', (data) => {
     // Atualizar a interface para mostrar que o jogador deve responder
     const gamePhase = document.getElementById('game-phase');
     if (gamePhase) {
-        gamePhase.innerHTML = `<div class="phase-box">
-            <h3>Sua vez de responder</h3>
-            <p>${data.message}</p>
-            <div class="loading-spinner"></div>
-        </div>`;
+        const phaseBox = document.createElement('div');
+        phaseBox.className = 'phase-box';
+        
+        const title = document.createElement('h3');
+        title.textContent = 'Sua vez de responder';
+        
+        const message = document.createElement('p');
+        message.textContent = data.message;
+        
+        const loadingSpinner = document.createElement('div');
+        loadingSpinner.className = 'loading-spinner';
+        
+        phaseBox.appendChild(title);
+        phaseBox.appendChild(message);
+        phaseBox.appendChild(loadingSpinner);
+        
+        gamePhase.innerHTML = '';
+        gamePhase.appendChild(phaseBox);
     }
 });
 
-// Evento para mostrar as respostas para votação (para compatibilidade)
-socket.on('show-answers', (data) => {
-    console.log("Recebendo respostas via evento show-answers:", data);
+// Evento para mostrar as respostas para votação
+socket.on('show-answers', function(data) {
+    console.log('Recebido evento show-answers:', data);
+    
+    // Resetar o estado de resposta
+    localState.isAnswering = false;
+    
+    // Armazenar os dados de votação
+    localState.voteData = data;
+    
+    // Atualizar a fase do jogo
+    localState.phase = 'vote';
+    
+    // Limpar o conteúdo anterior
+    const gamePhaseElement = document.getElementById('game-phase');
+    if (!gamePhaseElement) {
+        console.error("Elemento game-phase não encontrado!");
+        return;
+    }
+    gamePhaseElement.innerHTML = '';
+    
+    // Criar a interface de votação
+    const votingInterface = document.createElement('div');
+    votingInterface.className = 'voting-interface';
+    
+    // Adicionar título com a pergunta
+    const questionTitle = document.createElement('h2');
+    questionTitle.className = 'question-title';
+    questionTitle.textContent = data.question;
+    votingInterface.appendChild(questionTitle);
+    
+    // Adicionar instruções
+    const instructions = document.createElement('p');
+    instructions.className = 'voting-phase-instructions';
+    instructions.textContent = 'Vote na resposta que você acha que foi gerada pela IA!';
+    votingInterface.appendChild(instructions);
+    
+    // Adicionar temporizador
+    const timer = document.createElement('div');
+    timer.id = 'voting-timer';
+    timer.className = 'timer';
+    timer.textContent = 'Tempo restante: 45s';
+    votingInterface.appendChild(timer);
+    
+    // Iniciar o temporizador
+    let timeLeft = 45;
+    const timerInterval = setInterval(() => {
+        timeLeft--;
+        if (timeLeft <= 0) {
+            clearInterval(timerInterval);
+            timer.textContent = 'Tempo esgotado!';
+        } else {
+            timer.textContent = `Tempo restante: ${timeLeft}s`;
+        }
+    }, 1000);
+    
+    // Adicionar contêiner para as respostas
+    const answersContainer = document.createElement('div');
+    answersContainer.id = 'answers-container';
+    answersContainer.className = 'answers-container';
+    votingInterface.appendChild(answersContainer);
+    
+    // Adicionar a interface ao elemento de fase do jogo
+    gamePhaseElement.appendChild(votingInterface);
+    
+    // Mostrar as respostas para votação
     showAnswersForVoting(data);
 });
 
@@ -698,6 +1244,9 @@ function submitPlayerAnswer(question, timeout = false) {
         clearInterval(localState.answerTimer);
         localState.answerTimer = null;
     }
+    
+    // Marcar que o jogador não está mais na fase de resposta
+    localState.isAnswering = false;
     
     let answer;
     
@@ -727,7 +1276,7 @@ function submitPlayerAnswer(question, timeout = false) {
     const gamePhase = document.getElementById('game-phase');
     gamePhase.innerHTML = `<div class="phase-box">
         <h3>Resposta Enviada</h3>
-        <p>Sua resposta foi enviada. Aguardando a fase de votação...</p>
+        <p>Sua resposta foi enviada. Aguardando as respostas dos outros jogadores...</p>
         <div class="loading-spinner"></div>
     </div>`;
 }
@@ -736,22 +1285,18 @@ function submitPlayerAnswer(question, timeout = false) {
 function voteForAnswer(answerIndex) {
     console.log(`Enviando voto para a resposta de índice ${answerIndex}`);
     
-    if (answerIndex === 'skip') {
-        // Enviar voto para pular
-        socket.emit('vote', { answerIndex: 'skip' });
-        console.log("Voto para pular enviado com sucesso");
-    } else if (answerIndex === undefined || answerIndex === null) {
+    if (answerIndex === undefined || answerIndex === null) {
         console.error("Erro: Índice de resposta inválido");
         alert("Erro ao enviar voto: índice de resposta inválido");
         return;
-    } else {
-        // Enviar voto para uma resposta específica
-        socket.emit('vote', { answerIndex });
-        console.log("Voto enviado com sucesso");
     }
     
+    // Enviar voto para uma resposta específica
+    socket.emit('vote', { answerIndex });
+    console.log("Voto enviado com sucesso");
+    
     // Desabilitar todos os botões de voto após votar
-    const votingButtons = document.querySelectorAll('.answer-card button, .skip-option button');
+    const votingButtons = document.querySelectorAll('.answer-card button');
     votingButtons.forEach(button => {
         button.disabled = true;
         button.textContent = 'Votado';

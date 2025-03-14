@@ -154,18 +154,28 @@ body {
 }
 
 #mic-button {
-    font-size: 1.5em;
-    padding: 10px 20px;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 50px;
+    height: 50px;
     border-radius: 50%;
-    background: #555;
+    background-color: #3498db;
     color: white;
     border: none;
+    font-size: 20px;
     cursor: pointer;
-    align-self: flex-end;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    transition: all 0.3s ease;
 }
 
 #mic-button:hover {
-    background: #666;
+    transform: scale(1.1);
+    background-color: #2980b9;
 }
 
 .phase-box {
@@ -309,62 +319,68 @@ button:disabled {
 .result-card {
     background-color: #2a2a2a;
     border-radius: 8px;
+    margin-bottom: 15px;
     padding: 15px;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+}
+
+.result-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 .result-header {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     margin-bottom: 10px;
+    padding-bottom: 10px;
 }
 
-.result-number {
+.author-info {
+    display: flex;
+    align-items: center;
     font-weight: bold;
-    color: #f0f0f0;
+    gap: 10px;
 }
 
-.result-source {
-    font-weight: bold;
-    padding: 3px 8px;
-    border-radius: 4px;
+.author-name {
+    font-size: 16px;
+    margin-right: 8px;
 }
 
-.ai-source .result-source {
-    background-color: #553355;
-    color: #ffaaff;
-}
-
-.human-source .result-source {
-    background-color: #335533;
-    color: #aaffaa;
-}
-
-.unknown-source .result-source {
-    background-color: #555533;
-    color: #ffffaa;
+.author-type {
+    font-size: 14px;
+    opacity: 0.8;
 }
 
 .result-text {
-    color: #e0e0e0;
-    margin-bottom: 15px;
+    font-size: 16px;
     line-height: 1.5;
+    color: #fff;
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    position: relative;
+    font-style: italic;
 }
 
 .result-votes {
     position: relative;
-    height: 30px;
-    background-color: #3a3a3a;
-    border-radius: 4px;
+    height: 24px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    margin-bottom: 10px;
     overflow: hidden;
 }
 
 .vote-bar {
-    position: absolute;
-    top: 0;
-    left: 0;
     height: 100%;
-    background-color: #4a6a8a;
+    border-radius: 12px;
     transition: width 0.5s ease-out;
 }
 
@@ -377,9 +393,123 @@ button:disabled {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #f0f0f0;
+    color: #fff;
+    font-size: 14px;
     font-weight: bold;
-    text-shadow: 0 0 3px rgba(0, 0, 0, 0.7);
+    text-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
+}
+
+.points-info, .voters-points {
+    background-color: rgba(0, 0, 0, 0.15);
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    font-size: 14px;
+    color: #fff;
+    display: inline-block;
+    font-weight: bold;
+}
+
+.voters-list {
+    background-color: rgba(0, 0, 0, 0.1);
+    padding: 12px;
+    border-radius: 6px;
+    margin-top: 15px;
+}
+
+.voters-list h5 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 14px;
+    color: #ccc;
+    font-weight: normal;
+}
+
+.voters {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.voter {
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+}
+
+.voter-name {
+    font-weight: bold;
+}
+
+.no-voters {
+    color: #999;
+    font-style: italic;
+    padding: 8px 0;
+}
+
+.current-scores {
+    background-color: #2a2a2a;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 20px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.current-scores h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #fff;
+    font-size: 18px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 10px;
+}
+
+.scores-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.score-entry {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: 6px;
+}
+
+.my-score {
+    font-weight: bold;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+}
+
+.ai-score {
+    background-color: rgba(231, 76, 60, 0.2);
+    border-left: 4px solid #e74c3c;
+}
+
+.highlighted-ai {
+    position: relative;
+    border: 2px solid #e74c3c !important;
+}
+
+.highlighted-ai::after {
+    content: "Resposta da IA";
+    position: absolute;
+    top: -10px;
+    right: 10px;
+    background-color: #e74c3c;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
 }
 
 .question-box {
@@ -1085,4 +1215,666 @@ button:disabled {
     color: #f0f0f0;
     text-align: center;
     margin-bottom: 15px;
+}
+
+/* Estilos para a lista de jogadores que votaram */
+.voters-list {
+    margin-top: 10px;
+    padding: 10px;
+    background-color: #2a2a2a;
+    border-radius: 4px;
+}
+
+.voters-list h5 {
+    margin-top: 0;
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: #aaa;
+}
+
+.voters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.voter {
+    padding: 3px 8px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    font-size: 13px;
+    border-left-width: 2px;
+    border-left-style: solid;
+}
+
+.no-voters {
+    color: #888;
+    font-style: italic;
+    font-size: 13px;
+    margin-top: 5px;
+}
+
+/* Estilos para a lista de jogadores prontos para a próxima rodada */
+.ready-players-container {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #2a2a2a;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.ready-players-container p {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #ddd;
+}
+
+.ready-players-list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 15px;
+}
+
+.ready-player {
+    padding: 5px 10px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    font-size: 14px;
+    border-left-width: 2px;
+    border-left-style: solid;
+}
+
+/* Estilos para o botão de próxima rodada */
+.next-round-button {
+    display: block;
+    margin: 15px auto 0;
+    padding: 10px 20px;
+    background: linear-gradient(to bottom, #4CAF50, #388E3C);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.next-round-button:hover {
+    background: linear-gradient(to bottom, #66BB6A, #43A047);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.next-round-button:disabled {
+    background: linear-gradient(to bottom, #78909C, #546E7A);
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+/* Estilos para o contador de votos */
+.vote-counter {
+    background-color: #2c3e50;
+    color: #ecf0f1;
+    padding: 10px 15px;
+    border-radius: 5px;
+    margin: 10px 0 20px;
+    text-align: center;
+    font-weight: bold;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Estilos para os cartões de resposta */
+.answer-card {
+    background-color: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.answer-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.answer-content {
+    font-size: 16px;
+    line-height: 1.5;
+    color: #333;
+    margin-bottom: 15px;
+}
+
+/* Estilos para o botão de voto */
+.vote-button {
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 8px 15px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.2s ease;
+    display: block;
+    margin-left: auto;
+}
+
+.vote-button:hover {
+    background: linear-gradient(135deg, #2980b9, #3498db);
+    transform: translateY(-2px);
+}
+
+.vote-button:disabled {
+    background: #95a5a6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.vote-button.selected {
+    background: linear-gradient(135deg, #27ae60, #2ecc71);
+    box-shadow: 0 0 10px rgba(46, 204, 113, 0.5);
+}
+
+.vote-button.voted {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+/* Estilo para indicação de resposta própria */
+.own-answer-label {
+    background-color: #e74c3c;
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: bold;
+    display: inline-block;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+}
+
+/* Estilos para o status de resposta dos jogadores */
+.players-response-status {
+    background-color: #2c3e50;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 15px 0;
+    color: #ecf0f1;
+}
+
+.players-response-status h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 16px;
+    color: #ecf0f1;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    padding-bottom: 8px;
+}
+
+.player-status {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    margin-bottom: 8px;
+    border-radius: 5px;
+    background-color: rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.player-status.waiting {
+    border-left: 4px solid #f39c12;
+}
+
+.player-status.responded {
+    border-left: 4px solid #2ecc71;
+}
+
+.status-icon {
+    font-size: 18px;
+    margin-right: 10px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.waiting .status-icon {
+    color: #f39c12;
+    animation: pulse 1.5s infinite;
+}
+
+.responded .status-icon {
+    color: #2ecc71;
+}
+
+.player-name {
+    flex: 1;
+    font-weight: bold;
+}
+
+.status-text {
+    font-size: 14px;
+    padding: 3px 8px;
+    border-radius: 3px;
+}
+
+.waiting .status-text {
+    background-color: rgba(243, 156, 18, 0.2);
+    color: #f39c12;
+}
+
+.responded .status-text {
+    background-color: rgba(46, 204, 113, 0.2);
+    color: #2ecc71;
+}
+
+/* Estilos para a interface de votação */
+.voting-interface {
+    background-color: #1a2533;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.question-title {
+    color: #ecf0f1;
+    font-size: 24px;
+    margin-bottom: 15px;
+    text-align: center;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #34495e;
+}
+
+.voting-phase-instructions {
+    color: #bdc3c7;
+    font-size: 16px;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+#voting-timer {
+    background-color: #2c3e50;
+    color: #ecf0f1;
+    padding: 10px;
+    border-radius: 5px;
+    text-align: center;
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 20px;
+    border-left: 5px solid #e74c3c;
+}
+
+.answers-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.voting-instructions {
+    background-color: #2c3e50;
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 8px;
+    border-left: 5px solid #3498db;
+    color: #ecf0f1;
+    font-size: 16px;
+    text-align: center;
+}
+
+.voting-instructions p {
+    margin: 0;
+    line-height: 1.5;
+}
+
+.info-message {
+    font-size: 14px;
+    color: #95a5a6;
+    margin-top: 8px;
+    font-style: italic;
+}
+
+.own-answer-label {
+    background-color: #3498db;
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.answer-card {
+    background-color: #2c3e50;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-left: 4px solid #3498db;
+    transition: all 0.3s ease;
+}
+
+.answer-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.answer-content {
+    font-size: 16px;
+    color: #ecf0f1;
+    margin-bottom: 10px;
+    line-height: 1.5;
+}
+
+.vote-button {
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.vote-button:hover {
+    background: linear-gradient(135deg, #2980b9, #3498db);
+    transform: translateY(-2px);
+}
+
+.vote-button.selected {
+    background: linear-gradient(135deg, #27ae60, #2ecc71);
+    box-shadow: 0 0 10px rgba(46, 204, 113, 0.5);
+}
+
+.vote-button.voted {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.vote-counter {
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 18px;
+    color: #ecf0f1;
+    font-weight: bold;
+}
+
+/* Estilos para o resumo de votação */
+.voting-summary {
+    background-color: #2a2a2a;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    display: block;
+    width: 100%;
+}
+
+.voting-summary h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #fff;
+    font-size: 18px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 10px;
+}
+
+.voting-summary-content {
+    overflow-x: auto;
+}
+
+.voting-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-spacing: 0;
+    font-size: 14px;
+    display: table;
+}
+
+.voting-table-header {
+    display: flex;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 6px 6px 0 0;
+    font-weight: bold;
+}
+
+.voting-table-row {
+    display: flex;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.voting-table-row:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.voting-table-cell {
+    padding: 10px;
+    flex: 1;
+}
+
+.header-cell {
+    color: #aaa;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 1px;
+}
+
+.player-cell {
+    font-weight: bold;
+    padding-left: 15px;
+}
+
+.voted-cell {
+    font-weight: bold;
+}
+
+.points-cell {
+    text-align: right;
+    font-weight: bold;
+}
+
+/* Estilos para fontes de respostas */
+.ai-source {
+    border-color: #e74c3c !important;
+}
+
+.human-source {
+    /* Cada jogador terá sua própria cor de borda definida inline */
+}
+
+.unknown-source {
+    border-color: #777 !important;
+}
+
+/* Estilos para jogadores prontos */
+.ready-players-container {
+    background-color: #2a2a2a;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 20px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    text-align: center;
+}
+
+.ready-players-container p {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #ccc;
+    font-size: 14px;
+}
+
+.ready-players-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 15px;
+}
+
+.ready-player {
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: bold;
+    background-color: rgba(0, 0, 0, 0.2);
+    display: inline-block;
+}
+
+/* Botão para próxima rodada */
+.next-round-button {
+    background: linear-gradient(to right, #4CAF50, #45a049);
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: block;
+    width: 100%;
+    max-width: 300px;
+    margin: 0 auto;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.next-round-button:hover {
+    background: linear-gradient(to right, #45a049, #388E3C);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.next-round-button:disabled {
+    background: #666;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Estilos para a tabela detalhada de respostas e votos */
+.detailed-voting-summary {
+    background-color: #2a2a2a;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    display: block;
+    width: 100%;
+    overflow: hidden;
+}
+
+.detailed-voting-summary h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #fff;
+    font-size: 18px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 10px;
+}
+
+.detailed-voting-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-spacing: 0;
+    font-size: 14px;
+    display: table;
+}
+
+.detailed-table-header {
+    display: flex;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 6px 6px 0 0;
+    font-weight: bold;
+    width: 100%;
+}
+
+.detailed-table-row {
+    display: flex;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 10px 0;
+    width: 100%;
+}
+
+.detailed-table-row:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.detailed-cell {
+    padding: 10px;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+}
+
+.author-cell {
+    width: 20%;
+    font-weight: bold;
+    padding-left: 15px;
+    flex: 0 0 20%;
+}
+
+.answer-cell {
+    width: 40%;
+    font-style: italic;
+    color: #fff;
+    flex: 0 0 40%;
+}
+
+.voters-cell {
+    width: 40%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+    flex: 0 0 40%;
+}
+
+.voter-chip {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+    margin: 2px;
+    white-space: nowrap;
+}
+
+.no-votes {
+    color: #999;
+    font-style: italic;
+}
+
+/* Ajustes responsivos para a tabela detalhada */
+@media (max-width: 768px) {
+    .detailed-table-row {
+        flex-direction: column;
+        padding: 15px 0;
+    }
+    
+    .detailed-cell {
+        width: 100% !important;
+        padding: 5px 10px;
+        flex: none !important;
+    }
+    
+    .author-cell {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    
+    .answer-cell {
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+    
+    .voters-cell {
+        padding-top: 10px;
+    }
 } 
