@@ -7,7 +7,8 @@ let localState = {
     score: 0,
     aiScore: 0,
     isQuestionAuthor: false,
-    isAnswering: false
+    isAnswering: false,
+    playerAnswer: null
 };
 
 // Controles de voz
@@ -40,6 +41,52 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // Remover o scoreboard antigo se existir
+    const oldScoreboard = document.getElementById('scoreboard');
+    if (oldScoreboard) {
+        oldScoreboard.remove();
+    }
+    
+    // Mover players-list para fora do game-container
+    const playersList = document.getElementById('players-list');
+    if (playersList && playersList.parentNode) {
+        document.body.appendChild(playersList);
+        playersList.classList.add('players-list');
+        playersList.classList.add('hidden');
+    }
+    
+    // Criar o contêiner de ícones centralizado
+    const iconContainer = document.createElement('div');
+    iconContainer.className = 'icon-container';
+    document.body.appendChild(iconContainer);
+    
+    // Criar o ícone de ranking
+    const rankingIcon = document.createElement('div');
+    rankingIcon.id = 'ranking-icon';
+    rankingIcon.className = 'ranking-icon';
+    rankingIcon.innerHTML = '🏆';
+    rankingIcon.title = 'Ranking de Jogadores';
+    
+    // Adicionar o ícone de ranking ao contêiner (primeiro, à esquerda)
+    iconContainer.appendChild(rankingIcon);
+    
+    // Verificar se o botão de microfone já existe
+    let micButton = document.getElementById('mic-button');
+    if (micButton) {
+        // Remover o botão atual do seu local atual
+        micButton.parentNode.removeChild(micButton);
+    } else {
+        // Criar o botão de microfone se não existir
+        micButton = document.createElement('button');
+        micButton.id = 'mic-button';
+        micButton.innerHTML = '🎤';
+        micButton.title = 'Ativar/Desativar microfone';
+        micButton.onclick = toggleMic;
+    }
+    
+    // Adicionar botão de microfone ao contêiner (segundo, à direita)
+    iconContainer.appendChild(micButton);
 });
 
 // Função para iniciar o jogo
@@ -246,10 +293,70 @@ function updateGamePhase(phase, data) {
 }
 
 function updatePlayersList(players) {
-    const playersList = document.getElementById('players-list');
-    playersList.innerHTML = '<h3>Jogadores</h3>';
+    // Primeiro vamos verificar se o contêiner de jogadores já existe
+    let playersList = document.getElementById('players-list');
+    let rankingOverlay = document.getElementById('ranking-overlay');
     
-    players.forEach((player, index) => {
+    // Se o overlay não existir, vamos criá-lo
+    if (!rankingOverlay) {
+        // Criar o overlay para quando o ranking está aberto
+        rankingOverlay = document.createElement('div');
+        rankingOverlay.id = 'ranking-overlay';
+        rankingOverlay.className = 'ranking-overlay';
+        document.body.appendChild(rankingOverlay);
+    }
+    
+    // Verificar se já existe o ícone flutuante
+    let floatingIcon = document.getElementById('ranking-icon');
+    
+    // Garantir que os eventos estejam configurados
+    if (floatingIcon && !floatingIcon.hasAttribute('data-initialized')) {
+        // Adicionar evento de clique para mostrar/ocultar o ranking
+        floatingIcon.addEventListener('click', function(event) {
+            event.stopPropagation();
+            playersList.classList.toggle('players-list');
+            playersList.classList.toggle('hidden');
+            rankingOverlay.classList.toggle('active');
+        });
+        
+        // Marcar como inicializado
+        floatingIcon.setAttribute('data-initialized', 'true');
+        
+        // Adicionar evento para fechar o ranking ao clicar no overlay
+        rankingOverlay.addEventListener('click', function() {
+            playersList.classList.add('hidden');
+            rankingOverlay.classList.remove('active');
+        });
+    }
+    
+    // Configurar a classe para o elemento players-list
+    playersList.classList.add('players-list');
+    if (!playersList.classList.contains('hidden')) {
+        playersList.classList.add('hidden');
+    }
+    
+    // Ordenar os jogadores por pontuação (do maior para o menor)
+    const sortedPlayers = [...players].sort((a, b) => (b.score || 0) - (a.score || 0));
+    
+    // Adicionar a IA à lista para a classificação
+    if (localState.aiScore !== undefined) {
+        sortedPlayers.push({
+            id: 'ai',
+            name: 'Inteligência Artificial',
+            score: localState.aiScore,
+            color: '#e74c3c',
+            isAI: true
+        });
+        
+        // Reordenar após adicionar a IA
+        sortedPlayers.sort((a, b) => (b.score || 0) - (a.score || 0));
+    }
+    
+    // Atualizar o conteúdo do ranking
+    playersList.innerHTML = '<h3>Ranking de Jogadores</h3>';
+    
+    // Adicionar os jogadores ordenados por pontuação
+    sortedPlayers.forEach((player, index) => {
         // Verificar se este jogador é o usuário atual
         const isCurrentPlayer = player.id === socket.id;
         
@@ -258,6 +365,7 @@ function updatePlayersList(players) {
         if (player.isHost) playerClass += ' host';
         if (isCurrentPlayer) playerClass += ' current-player';
         if (player.isQuestionAuthor) playerClass += ' question-author';
+        if (player.isAI) playerClass += ' ai-player';
         
         // Criar o texto do jogador com indicadores visuais
         let playerText = `${player.name}`;
@@ -265,15 +373,16 @@ function updatePlayersList(players) {
         if (isCurrentPlayer) playerText += ' (Você)';
         if (player.isQuestionAuthor) playerText += ' (Pergunta)';
         
-        // Adicionar pontuação
+        // Adicionar posição no ranking e pontuação
         const playerScore = player.score || 0;
+        const rankingPosition = index + 1;
         
         // Usar a cor do jogador como estilo inline
         const playerColorStyle = player.color ? `border-left: 4px solid ${player.color}; background-color: ${player.color}20;` : '';
         
         playersList.innerHTML += `
             <div class="${playerClass}" style="${playerColorStyle}">
-                <div class="player-number" style="background-color: ${player.color || '#555'};">${index + 1}</div>
+                <div class="player-number" style="background-color: ${player.color || '#555'};">${rankingPosition}</div>
                 <div class="player-info">
                     ${isCurrentPlayer ? '👤 ' : ''}${playerText}
                 </div>
@@ -283,48 +392,6 @@ function updatePlayersList(players) {
             </div>
         `;
     });
-    
-    // Adicionar pontuação da IA
-    if (localState.aiScore !== undefined) {
-        playersList.innerHTML += `
-            <div class="player-card ai-player">
-                <div class="player-number">IA</div>
-                <div class="player-info">Inteligência Artificial</div>
-                <div class="player-score">
-                    <span class="score-value">${localState.aiScore}</span> pts
-                </div>
-            </div>
-        `;
-    }
-}
-
-// Função para atualizar o placar
-function updateScoreboard() {
-    const scoreboard = document.getElementById('scoreboard');
-    
-    // Criar o placar se não existir
-    if (!scoreboard) {
-        const gameContainer = document.getElementById('game-container');
-        const scoreboardDiv = document.createElement('div');
-        scoreboardDiv.id = 'scoreboard';
-        scoreboardDiv.className = 'scoreboard';
-        gameContainer.prepend(scoreboardDiv);
-    }
-    
-    // Atualizar o conteúdo do placar
-    const scoreboardContent = document.getElementById('scoreboard');
-    if (scoreboardContent) {
-        // Encontrar o jogador atual
-        const currentPlayer = localState.players.find(p => p.id === socket.id);
-        const currentPlayerScore = currentPlayer ? (currentPlayer.score || 0) : 0;
-        
-        scoreboardContent.innerHTML = `
-            <div class="score-item player-score-item">
-                <span class="score-label">Sua pontuação:</span>
-                <span class="score-value">${currentPlayerScore}</span>
-            </div>
-        `;
-    }
 }
 
 socket.on('connect', () => {
@@ -369,12 +436,26 @@ socket.on('game-update', (state) => {
     // Atualizar a interface
     updatePlayersList(state.players);
     updateGamePhase(state.phase, state.voteData);
-    updateScoreboard();
     
     // Se estamos na fase de votação e temos dados de votação, mostrar as respostas
     if (state.phase === 'vote' && state.voteData) {
         console.log("Dados de votação recebidos no game-update:", state.voteData);
-        showAnswersForVoting(state.voteData);
+        
+        // Verificar se os dados de votação contêm respostas válidas
+        if (state.voteData.answers && state.voteData.answers.length > 0) {
+            // Log para verificar se a resposta do próprio jogador está presente
+            console.log("Verificando dados de votação no game-update:");
+            console.log("ID do jogador atual:", socket.id);
+            console.log("Total de respostas:", state.voteData.answers.length);
+            state.voteData.answers.forEach((ans, idx) => {
+                console.log(`Resposta ${idx}:`, ans.answer, "Autor:", ans.authorId);
+            });
+            
+            // Chamar a função para mostrar as respostas para votação
+            showAnswersForVoting(state.voteData);
+        } else {
+            console.error("Dados de votação inválidos no game-update");
+        }
     }
 });
 
@@ -416,12 +497,20 @@ socket.on('new-message', (msg) => {
 
 // Função para mostrar as respostas para votação
 function showAnswersForVoting(data) {
-    console.log("Mostrando respostas para votação:", data);
+    console.log("=========== INICIANDO EXIBIÇÃO DAS RESPOSTAS PARA VOTAÇÃO ===========");
+    console.log("ID do jogador atual (socket.id):", socket.id);
     
     if (!data || !data.answers || data.answers.length === 0) {
         console.error("Dados de votação inválidos ou vazios:", data);
         return;
     }
+    
+    // Verificação detalhada de cada resposta
+    console.log("Respostas recebidas do servidor:", data.answers.length);
+    data.answers.forEach((ans, idx) => {
+        console.log(`[${idx}] authorId: '${ans.authorId}', socket.id: '${socket.id}', é do jogador atual: ${ans.authorId === socket.id}`);
+        console.log(`[${idx}] Texto da resposta: "${ans.answer.substring(0, 30)}${ans.answer.length > 30 ? '...' : ''}"`);
+    });
     
     const answersContainer = document.getElementById('answers-container');
     if (!answersContainer) {
@@ -432,20 +521,78 @@ function showAnswersForVoting(data) {
     // Limpar o contêiner
     answersContainer.innerHTML = '';
     
+    // Verifica se há alguma resposta do jogador atual
+    const playerAnswers = data.answers.filter(answer => {
+        return String(answer.authorId) === String(socket.id);
+    });
+    
+    if (playerAnswers.length > 0) {
+        console.log("Resposta do jogador atual encontrada:", playerAnswers[0].answer);
+        
+        // Mostrar a resposta do jogador na parte superior (opcional)
+        const yourAnswerInfo = document.createElement('div');
+        yourAnswerInfo.className = 'your-answer-info';
+        yourAnswerInfo.innerHTML = `
+            <p><strong>Sua resposta:</strong> "${playerAnswers[0].answer.substring(0, 50)}${playerAnswers[0].answer.length > 50 ? '...' : ''}"</p>
+            <p class="note">Sua resposta foi removida das opções de votação abaixo.</p>
+        `;
+        answersContainer.appendChild(yourAnswerInfo);
+    } else {
+        console.log("Nenhuma resposta do jogador atual encontrada");
+    }
+    
+    // Filtrar para mostrar apenas as respostas de outros jogadores, 
+    // usando String() para garantir que a comparação seja feita corretamente
+    const otherPlayerAnswers = data.answers.filter(answer => {
+        const isCurrentPlayer = String(answer.authorId) === String(socket.id);
+        console.log(`Filtragem: answer.authorId='${answer.authorId}', socket.id='${socket.id}', isCurrentPlayer=${isCurrentPlayer}, incluir=${!isCurrentPlayer}`);
+        return !isCurrentPlayer;
+    });
+    
+    console.log("Respostas após filtragem:", otherPlayerAnswers.length);
+    
     // Adicionar contador de votos
     const voteCounter = document.createElement('div');
     voteCounter.id = 'vote-counter';
     voteCounter.className = 'vote-counter';
-    voteCounter.innerHTML = 'Escolha uma resposta para votar';
+    voteCounter.innerHTML = `Escolha uma resposta para votar (${otherPlayerAnswers.length} disponíveis)`;
     answersContainer.appendChild(voteCounter);
     
-    // Adicionar respostas para votação
-    data.answers.forEach((answer, index) => {
+    // Adicionar instruções claras
+    const votingInstructions = document.createElement('div');
+    votingInstructions.className = 'voting-instructions';
+    votingInstructions.innerHTML = '<p>Escolha qual resposta você acredita que foi gerada pela IA. Você ganhará 3 pontos se acertar!</p>';
+    answersContainer.insertBefore(votingInstructions, answersContainer.firstChild);
+    
+    // Verificar se há respostas para mostrar após a filtragem
+    if (otherPlayerAnswers.length === 0) {
+        const noAnswersMessage = document.createElement('div');
+        noAnswersMessage.className = 'no-answers-message';
+        noAnswersMessage.textContent = 'Aguardando respostas de outros jogadores...';
+        answersContainer.appendChild(noAnswersMessage);
+        return;
+    }
+    
+    // Adicionar respostas para votação (apenas de outros jogadores)
+    otherPlayerAnswers.forEach((answer, filteredIndex) => {
+        // Encontrar o índice original da resposta no array de todas as respostas
+        const originalIndex = data.answers.findIndex(a => a === answer);
+        console.log(`Adicionando cartão de resposta filtrada ${filteredIndex}, índice original ${originalIndex}`);
+        
+        // Verificação de segurança: pular se for resposta do próprio jogador
+        if (String(answer.authorId) === String(socket.id)) {
+            console.error("ALERTA: Resposta do próprio jogador não foi filtrada corretamente!");
+            return; // Pula esta iteração
+        }
+        
         const answerCard = document.createElement('div');
         answerCard.className = 'answer-card';
         
-        // Verificar se esta resposta é do jogador atual
-        const isPlayerAnswer = answer.authorId === socket.id;
+        // Identificador numérico da resposta para facilitar a visualização
+        const answerLabel = document.createElement('div');
+        answerLabel.className = 'answer-label';
+        answerLabel.textContent = `Resposta ${filteredIndex + 1}`;
+        answerCard.appendChild(answerLabel);
         
         // Adicionar conteúdo da resposta
         const answerContent = document.createElement('div');
@@ -453,53 +600,45 @@ function showAnswersForVoting(data) {
         answerContent.textContent = answer.answer;
         answerCard.appendChild(answerContent);
         
-        // Adicionar botão de voto (exceto para a própria resposta do jogador)
-        if (!isPlayerAnswer) {
-            const voteButton = document.createElement('button');
-            voteButton.className = 'vote-button';
-            voteButton.textContent = 'Votar';
-            voteButton.dataset.index = index;
+        // Adicionar botão de voto
+        const voteButton = document.createElement('button');
+        voteButton.className = 'vote-button';
+        voteButton.textContent = 'Votar';
+        
+        console.log(`Botão de voto para resposta: "${answer.answer.substring(0, 30)}..." com índice original ${originalIndex}`);
+        
+        voteButton.dataset.index = originalIndex;
+        voteButton.dataset.authorId = answer.authorId; // Armazenar o ID do autor para verificação
+        
+        voteButton.addEventListener('click', function() {
+            // Verificação extra antes de enviar o voto
+            if (this.dataset.authorId === socket.id) {
+                console.error("Tentativa de votar na própria resposta bloqueada!");
+                alert("Você não pode votar em sua própria resposta!");
+                return;
+            }
             
-            voteButton.addEventListener('click', function() {
-                // Desabilitar todos os botões de voto após o jogador votar
-                document.querySelectorAll('.vote-button').forEach(btn => {
-                    btn.disabled = true;
-                    btn.classList.add('voted');
-                });
-                
-                // Destacar o botão selecionado
-                this.classList.add('selected');
-                
-                // Enviar voto para o servidor
-                socket.emit('vote', { answerIndex: index });
-                
-                // Atualizar mensagem
-                document.getElementById('vote-counter').innerHTML = 'Seu voto foi registrado. Aguardando outros jogadores...';
+            // Desabilitar todos os botões de voto após o jogador votar
+            document.querySelectorAll('.vote-button').forEach(btn => {
+                btn.disabled = true;
+                btn.classList.add('voted');
             });
             
-            answerCard.appendChild(voteButton);
-        } else {
-            // Se for a resposta do próprio jogador, mostrar uma indicação
-            const ownAnswerLabel = document.createElement('div');
-            ownAnswerLabel.className = 'own-answer-label';
-            ownAnswerLabel.textContent = 'Sua resposta';
-            answerCard.appendChild(ownAnswerLabel);
+            // Destacar o botão selecionado
+            this.classList.add('selected');
             
-            // Adicionar uma mensagem explicativa
-            const infoMessage = document.createElement('div');
-            infoMessage.className = 'info-message';
-            infoMessage.textContent = 'Você não pode votar na sua própria resposta';
-            answerCard.appendChild(infoMessage);
-        }
+            // Enviar voto para o servidor com o índice original
+            socket.emit('vote', { answerIndex: parseInt(this.dataset.index) });
+            
+            // Atualizar mensagem
+            document.getElementById('vote-counter').innerHTML = 'Seu voto foi registrado. Aguardando outros jogadores...';
+        });
         
+        answerCard.appendChild(voteButton);
         answersContainer.appendChild(answerCard);
     });
     
-    // Adicionar instruções claras
-    const votingInstructions = document.createElement('div');
-    votingInstructions.className = 'voting-instructions';
-    votingInstructions.innerHTML = '<p>Escolha qual resposta você acredita que foi gerada pela IA. Você ganhará 3 pontos se acertar!</p>';
-    answersContainer.insertBefore(votingInstructions, answersContainer.firstChild);
+    console.log("=========== FINALIZADA EXIBIÇÃO DAS RESPOSTAS PARA VOTAÇÃO ===========");
 }
 
 // Adicionar evento para atualização de votos
@@ -669,20 +808,20 @@ socket.on('vote-results', (data) => {
     let votersDetailHTML = '';
     
     data.answers.forEach((answer, index) => {
-        const authorColor = answer.source === 'ai' ? '#e74c3c' : 
-            (localState.players.find(p => p.id === answer.authorId)?.color || '#555');
-        
-        const authorName = answer.source === 'ai' ? 'Inteligência Artificial' : answer.authorName;
-        
-        // Lista de votantes formatada
-        let votersHTML = '';
-        if (answer.voters && answer.voters.length > 0) {
-            votersHTML = answer.voters.map(voter => 
+                        const authorColor = answer.source === 'ai' ? '#e74c3c' : 
+                            (localState.players.find(p => p.id === answer.authorId)?.color || '#555');
+                        
+                        const authorName = answer.source === 'ai' ? 'Inteligência Artificial' : answer.authorName;
+                        
+                        // Lista de votantes formatada
+                        let votersHTML = '';
+                        if (answer.voters && answer.voters.length > 0) {
+                            votersHTML = answer.voters.map(voter => 
                 `<span style="display: inline-block; padding: 3px 8px; margin: 2px; border-radius: 4px; color: ${voter.color}; border: 1px solid ${voter.color}; background-color: ${voter.color}15;">
-                    ${voter.name} ${voter.id === socket.id ? '(Você)' : ''}
-                </span>`
+                                    ${voter.name} ${voter.id === socket.id ? '(Você)' : ''}
+                                </span>`
             ).join(' ');
-        } else {
+                        } else {
             votersHTML = '<span style="color: #777; font-style: italic;">Nenhum voto</span>';
         }
         
@@ -692,17 +831,17 @@ socket.on('vote-results', (data) => {
                     <div style="display: flex; align-items: center; padding: 8px 12px; border-radius: 4px; background-color: rgba(255, 255, 255, 0.03); color: ${authorColor}; border-left: 4px solid ${authorColor};">
                         <span style="font-weight: bold; margin-right: 8px;">Autor:</span>
                         <strong>${authorName}</strong>
-                    </div>
+                                </div>
                     <div style="padding: 8px 12px; background-color: rgba(255, 255, 255, 0.03); border-radius: 4px;">
                         <span style="font-weight: bold; color: #bbb; margin-right: 8px;">Resposta:</span>
                         <span>"${answer.answer.substring(0, 80)}${answer.answer.length > 80 ? '...' : ''}"</span>
-                    </div>
+                                </div>
                     <div style="padding: 8px 12px; background-color: rgba(255, 255, 255, 0.03); border-radius: 4px;">
                         <span style="font-weight: bold; color: #bbb; margin-right: 8px;">Quem votou:</span>
                         <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
-                            ${votersHTML}
-                        </div>
-                    </div>
+                                    ${votersHTML}
+                                </div>
+                            </div>
                 </div>
             </div>
         `;
@@ -751,7 +890,7 @@ socket.on('vote-results', (data) => {
             <div class="voting-table-row">
                 <div class="voting-table-cell player-cell" style="color: ${playerColor}; border-left: 4px solid ${playerColor};">
                     ${player.name} ${player.id === socket.id ? '(Você)' : ''}
-                </div>
+            </div>
                 <div class="voting-table-cell voted-cell" style="color: ${votedForColor};">
                     ${votedFor}
                 </div>
@@ -766,15 +905,15 @@ socket.on('vote-results', (data) => {
     const votingTableHTML = `
         <div class="voting-summary" style="margin-top: 20px;">
             <h4 style="margin-bottom: 10px;">Resumo da votação:</h4>
-            <div class="voting-table">
-                <div class="voting-table-header">
-                    <div class="voting-table-cell header-cell">Jogador</div>
-                    <div class="voting-table-cell header-cell">Votou em</div>
-                    <div class="voting-table-cell header-cell">Pontos ganhos</div>
+                <div class="voting-table">
+                    <div class="voting-table-header">
+                        <div class="voting-table-cell header-cell">Jogador</div>
+                        <div class="voting-table-cell header-cell">Votou em</div>
+                        <div class="voting-table-cell header-cell">Pontos ganhos</div>
+                    </div>
+                    ${votingTableRowsHTML}
                 </div>
-                ${votingTableRowsHTML}
             </div>
-        </div>
     `;
     
     // Atualizar o conteúdo da interface
@@ -997,9 +1136,6 @@ socket.on('vote-results', (data) => {
     
     // Atualizar o placar local
     localState.aiScore = data.aiScore;
-    
-    // Atualizar o placar
-    updateScoreboard();
     
     // Atualizar o contador de jogadores prontos
     document.getElementById('total-players').textContent = localState.players.length;
@@ -1431,6 +1567,24 @@ socket.on('show-answers', function(data) {
     // Resetar o estado de resposta
     localState.isAnswering = false;
     
+    // Verificar se temos dados de respostas
+    if (!data || !data.answers || data.answers.length === 0) {
+        console.error("Dados de respostas inválidos ou vazios no evento show-answers");
+        return;
+    }
+    
+    // Log para verificar se a resposta do próprio jogador está presente nos dados
+    console.log("Verificando dados recebidos no evento show-answers:");
+    console.log("ID do jogador atual:", socket.id);
+    console.log("Total de respostas recebidas:", data.answers.length);
+    
+    // Encontrar e guardar a resposta do jogador atual para referência
+    const playerAnswer = data.answers.find(a => a.authorId === socket.id);
+    if (playerAnswer) {
+        console.log("Resposta do jogador atual:", playerAnswer.answer);
+        localState.playerAnswer = playerAnswer.answer;
+    }
+    
     // Armazenar os dados de votação
     localState.voteData = data;
     
@@ -1460,6 +1614,15 @@ socket.on('show-answers', function(data) {
     instructions.className = 'voting-phase-instructions';
     instructions.textContent = 'Vote na resposta que você acha que foi gerada pela IA!';
     votingInterface.appendChild(instructions);
+    
+    // Adicionar informação sobre a própria resposta (opcional)
+    if (localState.playerAnswer) {
+        const yourAnswerInfo = document.createElement('div');
+        yourAnswerInfo.className = 'your-answer-info';
+        yourAnswerInfo.innerHTML = `<p><strong>Sua resposta:</strong> "${localState.playerAnswer.substring(0, 50)}${localState.playerAnswer.length > 50 ? '...' : ''}"</p>
+        <p class="note">Você não verá sua própria resposta nas opções de votação abaixo.</p>`;
+        votingInterface.appendChild(yourAnswerInfo);
+    }
     
     // Adicionar temporizador
     const timer = document.createElement('div');
