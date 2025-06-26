@@ -1,7 +1,7 @@
 # Jogo Multiplayer Online - Teste de Turing onde todos os jogadores devem se comportarem como uma IA.
 
 ## Descrição
-Um jogo multiplayer baseado no Teste de Turing e no boardgame Dixit, onde jogadores tentam identificar quem é a IA.
+Um jogo multiplayer baseado no Teste de Turing, onde jogadores tentam identificar quem é a IA.
 
 # Jogo de Adivinhação com IA
 
